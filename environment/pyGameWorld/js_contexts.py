@@ -348,9 +348,15 @@ function getGWPathAndRotPlacement(worldDict, toolverts, pos, maxtime, stepSize, 
     var w = addTool(worldDict, toolverts, pos)
     return getGWPathAndRot(w, maxtime, stepSize, noiseDict, returnNewWorld)
 }}
+function getGWPathAndRotNoPlacement(worldDict, maxtime, stepSize, noiseDict, returnNewWorld) {{
+    return getGWPathAndRot(worldDict, maxtime, stepSize, noiseDict, returnNewWorld)
+}}
 function getGWStatePathPlacement(worldDict, toolverts, pos, maxtime, stepSize, noiseDict, returnNewWorld) {{
     var w = addTool(worldDict, toolverts, pos)
     return getGWStatePath(w, maxtime, stepSize, noiseDict, returnNewWorld)
+}}
+function getGWStatePathNoPlacement(worldDict, maxtime, stepSize, noiseDict, returnNewWorld) {{
+    return getGWStatePath(worldDict, maxtime, stepSize, noiseDict, returnNewWorld)
 }}
 function getGWCollisionPathPlacement(worldDict, toolverts, pos, maxtime, stepSize, noiseDict, returnNewWorld) {{
     var w = addTool(worldDict, toolverts, pos)

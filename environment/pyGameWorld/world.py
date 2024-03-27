@@ -350,7 +350,7 @@ class PGWorld(object):
         # Add any non-static/static collisions to the events
         if not (o1.isStatic() and o2.isStatic()):
             collision_info = pullCollisionInformation(arb)
-            self._collisionEvents.append([onms[0],onms[1], "begin",self.time, collision_info])
+            self._collisionEvents.append([onms[0], onms[1], "begin", self.time, collision_info])
         self._ssBegin(o1, o2)
         return True
 
@@ -472,7 +472,8 @@ class PGWorld(object):
             return np.abs(o1.distanceFromPoint([0,0]) - o2.distanceFromPoint([0,0])) #distance between these two objects is thing that matters
         else:
             gobj = self.getObject(self.goalCond.goal)
-            return max(gobj.distanceFromPoint(point), 0)
+            # return max(gobj.distanceFromPoint(point), 0)
+            return max(gobj.distanceFromPoint(point).distance, 0)
 
     def distanceToGoalContainer(self, point):
         """Specifies that for container objects, you want the distance to the top of the container"""

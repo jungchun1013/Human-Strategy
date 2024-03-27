@@ -108,7 +108,8 @@ class PGObject(object):
             for s in self._exposeShapes():
                 if not s.point_query(position):
                     raise AssertionError("Must kick an object within the object (or set as unsafe)")
-        self._cpBody.apply_impulse_at_world_point(impulse, position)
+        # self._cpBody.apply_impulse_at_world_point(impulse, position)
+        self._cpBody.apply_impulse_at_local_point(impulse, position)
 
     def distanceFromPoint(self, point):
         d, _ = self._cpShape.point_query(point)
@@ -286,7 +287,8 @@ class PGContainer(PGObject):
         if density != 0:
             ptlist = recenterPoly(ptlist)
         #self.seglist = map(lambda p: pm.Vec2d(p), ptlist)
-        self.seglist = [pm.Vec2d(p) for p in ptlist]
+        # self.seglist = [pm.Vec2d(p) for p in ptlist]
+        self.seglist = [pm.Vec2d(*p) for p in ptlist]
 
         self._area = np.pi * self.r * self.r
         imom = 0
@@ -383,7 +385,8 @@ class PGContainer(PGObject):
         return self._cpPolyShapes
 
     def distanceFromPoint(self, point):
-        d, _ = self._cpSensor.point_query(point)
+        # d, _ = self._cpSensor.point_query(point)
+        d = self._cpSensor.point_query(point)
         return d
 
     def getArea(self):
@@ -452,11 +455,13 @@ class PGCompound(PGObject):
             for pc, a, verts in zip(polyCents, areas, polygons):
                 pos = pm.Vec2d(pc[0] - loc.x, pc[1] - loc.y)
                 imom += pm.moment_for_poly(density*a, vertices, pos)
-                rcverts = [pm.Vec2d([p[0]+pos.x, p[1]+pos.y]) for p in verts]
+                # rcverts = [pm.Vec2d([p[0]+pos.x, p[1]+pos.y]) for p in verts]
+                rcverts = [pm.Vec2d(p[0]+pos.x, p[1]+pos.y) for p in verts]
                 self._cpShapes.append(pm.Poly(None, rcverts))
                 self.polylist.append(rcverts)
             mass = self._area*density
             self._cpBody = pm.Body(mass, imom)
+            space.add(self._cpBody)
             for sh in self._cpShapes:
                 sh.body = self._cpBody
                 sh.elasticity = elasticity
@@ -465,7 +470,7 @@ class PGCompound(PGObject):
                 sh.name = name
                 space.add(sh)
             self._cpBody.position = loc
-            space.add(self._cpBody)
+            # space.add(self._cpBody)
 
     def getPolys(self):
         if self.isStatic():

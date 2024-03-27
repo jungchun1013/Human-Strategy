@@ -205,12 +205,16 @@ class ToolPicker(object):
     def getWorldDims(self):
         return self._world.dims
 
+    def getObjects(self):
+        return self._world.objects
+
     def exposeWorld(self):
         return self._world
 
     toolNames = property(getToolNames)
     worldDims = property(getWorldDims)
     world = property(exposeWorld)
+    objects = property(getObjects)
 
 
 def loadToolPicker(jsonfile, basicTimestep = 0.1):

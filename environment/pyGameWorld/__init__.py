@@ -5,6 +5,7 @@ from .jsrun import *
 from .helpers import *
 from .noisyWorld import *
 from .toolpicker_js import ToolPicker, loadToolPicker, JSRunner, CollisionChecker
+# from .gameTypes import ToolPicker, loadToolPicker
 
 __all__ = ['PGWorld','loadFromDict','ToolPicker','loadToolPicker',
            'noisifyWorld','pyGetPath', 'JSRunner', 'CollisionChecker']

@@ -19,7 +19,8 @@ __all__ = ['areaForSegment','areaForPoly','centroidForPoly','recenterPoly','obje
 def areaForPoly(verts):
     area = 0
     #pmv = map(lambda v: pm.Vec2d(v), verts)
-    pmv = [pm.Vec2d(v) for v in list(verts)]
+    # pmv = [pm.Vec2d(v) for v in list(verts)]
+    pmv = [pm.Vec2d(*v) for v in list(verts)]
     for i in range(len(pmv)):
         v1 = pmv[i]
         v2 = pmv[(i+1) % len(pmv)]
@@ -29,7 +30,8 @@ def areaForPoly(verts):
 def centroidForPoly(verts):
     tsum = 0
     vsum = pm.Vec2d(0,0)
-    pmv = [pm.Vec2d(v) for v in list(verts)]
+    # pmv = [pm.Vec2d(v) for v in list(verts)]
+    pmv = [pm.Vec2d(*v) for v in list(verts)]
     #pmv = [*map(lambda v: pm.Vec2d(v), verts)]
     for i in range(len(pmv)):
         v1 = pmv[i]
@@ -57,7 +59,8 @@ def _isleft(spt, ept, testpt):
     return cross > 0
 
 def segs2Poly(seglist, r):
-    vlist = [pm.Vec2d(v) for v in seglist]
+    # vlist = [pm.Vec2d(v) for v in seglist]
+    vlist = [pm.Vec2d(*v) for v in seglist]
     #vlist = list(map(lambda p: pm.Vec2d(p), seglist))
     # Start by figuring out the initial edge (ensure ccw winding)
     iseg = vlist[1] - vlist[0]
@@ -96,7 +99,8 @@ def segs2Poly(seglist, r):
         if angn < 0:
             angn += 2*np.pi
         unitn = pm.Vec2d.unit()
-        unitn.angle = angn
+        # unitn.angle = angn
+        unitn = unitn.rotated(angn-unitn.angle)
         xdiff = r if unitn.x >= 0 else -r
         ydiff = r if unitn.y >= 0 else -r
         next3 = (pi.x + xdiff, pi.y + ydiff)
@@ -241,7 +245,6 @@ def filterCollisionEvents(eventlist, slop_time = .2):
     col_list = {}
     col_list_beg = {}
     output_events = []
-
     for o1,o2,tp,tm,ci in eventlist:
         if o2 < o1:
             tmp = o2
@@ -250,7 +253,12 @@ def filterCollisionEvents(eventlist, slop_time = .2):
             # Also need to swap the normals
             new_cins = []
             for n in ci[0]:
-                new_cins.append({'x': -n['x'], 'y': -n['y']})
+                if type(n) == dict:
+                    new_cins.append({'x': -n['x'], 'y': -n['y']})
+                elif type(n) == list:
+                    new_cins.append([-n[0], -n[1]])
+                else:
+                    new_cins.append(-n)
             ci[0] = new_cins
 
         comb = re.sub('__', '_', o1+"_"+o2).strip('_') # Filtering for objects that start with _

@@ -278,7 +278,7 @@ class ToolPicker(object):
         tool = self._tools[toolname]
         # Make sure the tool can be placed
         if self.checkPlacementCollide(toolname, position):
-            return None, None, -1, None
+            return None, None, -1
         if stopOnGoal:
             wd = self._worlddict
         else:
@@ -289,13 +289,38 @@ class ToolPicker(object):
                               self._tools[toolname], position, maxtime,
                               self.bts, {}, returnDict)
 
+    def observeFullPath(self, maxtime=20.,
+                                 returnDict=False, stopOnGoal=True,
+                                 objAdjust=None):
+        if stopOnGoal:
+            wd = self._worlddict
+        else:
+            wd = self._wdng
+        if objAdjust:
+            wd = updateObjects(wd, objAdjust)
+        return self._ctx.call('getGWPathAndRotNoPlacement', wd, maxtime,
+                              self.bts, {}, returnDict)
+
+    # check if the action can move desire object
+    def observePartialPath(self, maxtime=20.,
+                                 returnDict=False, stopOnGoal=True,
+                                 objAdjust=None):
+        if stopOnGoal:
+            wd = self._worlddict
+        else:
+            wd = self._wdng
+        if objAdjust:
+            wd = updateObjects(wd, objAdjust)
+        return self._ctx.call('getGWPathAndRotNoPlacement', wd, maxtime,
+                              self.bts, {}, returnDict)
+
     def observeGeomPath(self, toolname, position, maxtime=20.,
                         returnDict=False, stopOnGoal=True, objAdjust=None):
         assert toolname in self._tools.keys(), "That tool does not exist!"
         tool = self._tools[toolname]
         # Make sure the tool can be placed
         if self.checkPlacementCollide(toolname, position):
-            return None, None, -1, None
+            return None, None, -1
         if stopOnGoal:
             wd = self._worlddict
         else:
@@ -313,7 +338,7 @@ class ToolPicker(object):
         # Make sure the tool can be placed
         if self.checkPlacementCollide(toolname, position):
             if returnDict:
-                return None, None, -1, None
+                return None, None, -1
             else:
                 return None, None, -1
         if stopOnGoal:
@@ -324,6 +349,30 @@ class ToolPicker(object):
             wd = updateObjects(wd, objAdjust)
         return self._ctx.call('getGWStatePathPlacement', wd,
                               self._tools[toolname], position, self.maxTime,
+                              self.bts, {}, returnDict)
+
+    def observeStatePath(self, returnDict=False,
+                                  stopOnGoal=True, objAdjust=None):
+        if stopOnGoal:
+            wd = self._worlddict
+        else:
+            wd = self._wdng
+        if objAdjust:
+            wd = updateObjects(wd, objAdjust)
+        return self._ctx.call('getGWStatePathNoPlacement', wd,
+                              self.maxTime,
+                              self.bts, {}, returnDict)
+
+    def observeForceStatePath(self, returnDict=False,
+                                  stopOnGoal=True, objAdjust=None):
+        if stopOnGoal:
+            wd = self._worlddict
+        else:
+            wd = self._wdng
+        if objAdjust:
+            wd = updateObjects(wd, objAdjust)
+        return self._ctx.call('getGWStatePathNoPlacement', wd,
+                              self.maxTime,
                               self.bts, {}, returnDict)
 
     def observeCollisionEvents(self, toolname, position, maxtime=20.,
@@ -381,6 +430,29 @@ class ToolPicker(object):
         if returnDict:
             r.append(w)
         return r
+
+    def observeFullCollisionEventsNoTool(self, maxtime=20.,
+                               collisionSlop=.2001, returnDict=False,
+                               stopOnGoal=True, objAdjust=None):
+        if stopOnGoal:
+            wd = self._worlddict
+        else:
+            wd = self._wdng
+        if objAdjust:
+            wd = updateObjects(wd, objAdjust)
+        if returnDict:
+            path, col, end, t, w = self._ctx.call('getGWCollisionPathAndRot', wd,
+                                               maxtime, self.bts, {},True)
+        else:
+            path, col, end, t = self._ctx.call('getGWCollisionPathAndRot', wd,
+                                               maxtime, self.bts, {}, False)
+        fcol = filterCollisionEvents(col, collisionSlop)
+        r = [path, fcol, end, t]
+        if returnDict:
+            r.append(w)
+        return r
+
+
 
     def placeObject(self, toolname, position):
         raise NotImplementedError(
@@ -717,7 +789,7 @@ class ToolPicker(object):
             "Exposing world returns a python object -- may differ from JS used in ToolPicker")
         return loadFromDict(self._worlddict)
 
-    def toolBB(self, toolname):
+    def toolBB(self, toolname): # bounding box
         assert toolname in self.toolNames, "Tool not found: " + str(toolname)
         tool = self._tools[toolname]
         minx = 99999999

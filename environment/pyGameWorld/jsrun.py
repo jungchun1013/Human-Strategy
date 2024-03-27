@@ -194,7 +194,8 @@ def pyGetCollisionsAddForces(gameworld, force_times={}, maxtime = 20., stepSize 
     for onm, o in gameworld.objects.items():
         if not o.isStatic():
             tracknames.append(onm)
-            pathdict[onm] = [o.position]
+            # pathdict[onm] = [o.position]
+            pathdict[onm] = [[*o.position, o.rotation, *o.velocity]]
     while running:
         gameworld.step(stepSize)
         t += stepSize
@@ -206,9 +207,12 @@ def pyGetCollisionsAddForces(gameworld, force_times={}, maxtime = 20., stepSize 
                 gameworld.objects[onm].kick(impulse, position)
 
         for onm in tracknames:
-            pathdict[onm].append(gameworld.objects[onm].position)
+            # pathdict[onm].append(gameworld.objects[onm].position)
+            pathdict[onm].append([*gameworld.objects[onm].position, gameworld.objects[onm].rotation, *gameworld.objects[onm].velocity])
         if gameworld.checkEnd() or (t >= maxtime):
             running = False
+    collisions = None
+    # FIXME - need collision
     collisions = filterCollisionEvents(gameworld.collisionEvents, collisionSlop)
     return pathdict, collisions, gameworld.checkEnd(), t
 

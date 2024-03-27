@@ -240,6 +240,9 @@ def visualizePath(worlddict, path, hz=30.):
                     #o.setRot(path[onm][i][2])
         sc.blit(drawWorld(world), (0,0))
         pg.display.flip()
+
+        pg.image.save(sc, 'png/test_{}.png'.format(str(i)))
+
         for e in pg.event.get():
             if e.type == QUIT:
                 pg.quit()
@@ -294,6 +297,7 @@ def drawPathSingleImageWithTools(tp, path, pathSize=3, lighten_amt=.5, worlddict
         sc = drawWorld(world, backgroundOnly=True)#, worlddict=worlddict)
     else:
         sc = drawWorldWithTools(tp, backgroundOnly=True, worlddict=worlddict)
+        # sc = drawWorldWithTools(tp, backgroundOnly=False, worlddict=worlddict)
     def makept(p):
         return [int(i) for i in world._invert(p)]
     # draw the paths in the background
