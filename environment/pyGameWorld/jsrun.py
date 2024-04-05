@@ -4,7 +4,7 @@ from .helpers import filterCollisionEvents
 import copy
 import os, json
 
-__all__ = ["jsRunGame", "pyRunGame", "jsGetPath", "pyGetPath", "jsGetStatePath", "pyGetStatePath", "jsGetCollisions", "pyGetCollisions", "pyGetCollisionsAddForces"]
+__all__ = ["jsRunGame", "pyRunGame", "jsGetPath", "pyGetPath", "jsGetStatePath", "pyGetStatePath", "jsGetCollisions", "pyGetCollisions", "pyGetCollisionsAddForces", "pyGetCollisionsPlacement"]
 
 jsruntime = get('Node')
 jscontext = jsruntime.compile('''
@@ -167,6 +167,43 @@ def pyGetStatePath(gameworld, maxtime = 20., stepSize = .1):
             running = False
     return pathdict, gameworld.checkEnd(), t
 
+def addTool(worldDict, toolverts, pos):
+    # if typeof(toolverts) == 'undefined': return worldDict
+    ppolys = []
+    for i in range(len(toolverts)):
+        tpol = []
+        for j in range(len(toolverts[i])):
+            tpol.append([toolverts[i][j][0] + pos[0], toolverts[i][j][1] + pos[1]])
+        
+        ppolys.append(tpol)
+    worldDict.addCompound("PLACED", ppolys, (0, 0, 255, 255), (0, 0), density = 1)
+
+    return worldDict
+
+def pyGetCollisionsPlacement(gameworld, tp, toolname, position, maxtime = 20., stepSize = .1, collisionSlop = 0.2001):
+    running = True
+    t = 0
+    pathdict = dict()
+    tracknames = []
+    tool = tp._tools[toolname]
+    gameworld = addTool(gameworld, tool, position)
+
+    for onm, o in gameworld.objects.items():
+        if not o.isStatic():
+            tracknames.append(onm)
+            # pathdict[onm] = [o.position]
+            pathdict[onm] = [[*o.position, o.rotation, *o.velocity]]
+    while running:
+        gameworld.step(stepSize)
+        t += stepSize
+        for onm in tracknames:
+            # pathdict[onm].append(gameworld.objects[onm].position)
+            pathdict[onm].append([*gameworld.objects[onm].position, gameworld.objects[onm].rotation, *gameworld.objects[onm].velocity])
+        if gameworld.checkEnd() or (t >= maxtime):
+            running = False
+    collisions = filterCollisionEvents(gameworld.collisionEvents, collisionSlop)
+    return pathdict, collisions, gameworld.checkEnd(), t
+
 def pyGetCollisions(gameworld, maxtime = 20., stepSize = .1, collisionSlop = 0.2001):
     running = True
     t = 0
@@ -175,12 +212,14 @@ def pyGetCollisions(gameworld, maxtime = 20., stepSize = .1, collisionSlop = 0.2
     for onm, o in gameworld.objects.items():
         if not o.isStatic():
             tracknames.append(onm)
-            pathdict[onm] = [o.position]
+            # pathdict[onm] = [o.position]
+            pathdict[onm] = [[*o.position, o.rotation, *o.velocity]]
     while running:
         gameworld.step(stepSize)
         t += stepSize
         for onm in tracknames:
-            pathdict[onm].append(gameworld.objects[onm].position)
+            # pathdict[onm].append(gameworld.objects[onm].position)
+            pathdict[onm].append([*gameworld.objects[onm].position, gameworld.objects[onm].rotation, *gameworld.objects[onm].velocity])
         if gameworld.checkEnd() or (t >= maxtime):
             running = False
     collisions = filterCollisionEvents(gameworld.collisionEvents, collisionSlop)

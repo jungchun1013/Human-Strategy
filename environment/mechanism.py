@@ -9,7 +9,7 @@ from networkx.drawing.nx_agraph import graphviz_layout
 import pygraphviz
 import os
 import math
-from utils import *
+# from utils import *
 import itertools
 
 

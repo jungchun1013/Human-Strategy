@@ -125,7 +125,8 @@ class PGObject(object):
 
 class PGPoly(PGObject):
 
-    def __init__(self,name,space,vertices,density = DEFAULT_DENSITY,elasticity=DEFAULT_ELASTICITY,
+    def __init__(self,name,space,vertices, velocity=DEFAULT_VELOCITY, density = DEFAULT_DENSITY,
+                elasticity=DEFAULT_ELASTICITY,
                  friction=DEFAULT_FRICTION,color=DEFAULT_COLOR):
         PGObject.__init__(self, name, "Poly", space, color, density, friction, elasticity)
 
@@ -152,6 +153,7 @@ class PGPoly(PGObject):
             self._cpShape.collision_type = COLTYPE_SOLID
             self._cpShape.name = name
             self._cpBody.position = loc
+            self._cpBody.velocity = velocity
             space.add(self._cpBody, self._cpShape)
 
     def getVertices(self):
@@ -185,7 +187,7 @@ class PGPoly(PGObject):
 
 class PGBall(PGObject):
 
-    def __init__(self, name, space, position, radius, density = DEFAULT_DENSITY,
+    def __init__(self, name, space, position, radius, velocity=DEFAULT_VELOCITY, density = DEFAULT_DENSITY,
                  elasticity=DEFAULT_ELASTICITY, friction=DEFAULT_FRICTION,color=DEFAULT_COLOR):
         PGObject.__init__(self, name, "Ball", space, color, density, friction, elasticity)
         area = np.pi * radius * radius
@@ -206,6 +208,7 @@ class PGBall(PGObject):
             self._cpShape.collision_type = COLTYPE_SOLID
             self._cpShape.name = name
             self._cpBody.position = position
+            self._cpBody.velocity = velocity
             space.add(self._cpBody, self._cpShape)
 
     def getRadius(self):
@@ -228,7 +231,7 @@ class PGBall(PGObject):
 
 class PGSeg(PGObject):
 
-    def __init__(self, name, space, p1, p2, width, density = DEFAULT_DENSITY,
+    def __init__(self, name, space, p1, p2, width, velocity=DEFAULT_VELOCITY, density = DEFAULT_DENSITY,
                  elasticity=DEFAULT_ELASTICITY, friction=DEFAULT_FRICTION,color=DEFAULT_COLOR):
         PGObject.__init__(self, name, "Segment", space, color, density, friction, elasticity)
         self.r = width / 2
@@ -253,6 +256,7 @@ class PGSeg(PGObject):
             self._cpShape.collision_type = COLTYPE_SOLID
             self._cpShape.name = name
             self._cpBody.position = pos
+            self._cpBody.velocity = velocity
             space.add(self._cpBody, self._cpShape)
 
     def getPoints(self):
@@ -273,7 +277,7 @@ class PGSeg(PGObject):
 
 class PGContainer(PGObject):
 
-    def __init__(self,name, space, ptlist, width, density = DEFAULT_DENSITY,
+    def __init__(self,name, space, ptlist, width, velocity=DEFAULT_VELOCITY, density = DEFAULT_DENSITY,
                  elasticity=DEFAULT_ELASTICITY, friction=DEFAULT_FRICTION,
                  inner_color=DEFAULT_GOAL_COLOR, outer_color=DEFAULT_COLOR):
         PGObject.__init__(self, name, "Container", space, outer_color, density, friction, elasticity)
@@ -329,6 +333,7 @@ class PGContainer(PGObject):
         space.add(self._cpSensor)
         if mass != 0:
             self._cpBody.position = loc
+            self._cpBody.velocity = velocity
 
 
     def getPolys(self):
@@ -401,7 +406,7 @@ class PGContainer(PGObject):
 
 class PGCompound(PGObject):
 
-    def __init__(self, name, space, polygons, density = DEFAULT_DENSITY,
+    def __init__(self, name, space, polygons, velocity=DEFAULT_VELOCITY, density = DEFAULT_DENSITY,
                  elasticity=DEFAULT_ELASTICITY, friction=DEFAULT_FRICTION,color=DEFAULT_COLOR):
         PGObject.__init__(self, name, "Compound", space, color, density, friction, elasticity)
 
@@ -470,6 +475,7 @@ class PGCompound(PGObject):
                 sh.name = name
                 space.add(sh)
             self._cpBody.position = loc
+            self._cpBody.velocity = velocity
             # space.add(self._cpBody)
 
     def getPolys(self):

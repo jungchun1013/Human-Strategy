@@ -8,6 +8,16 @@ from pyGameWorld.helpers import *
 import numpy as np
 from copy import deepcopy
 
+##############################################
+#
+# Algorithm
+#
+##############################################
+
+
+
+##############################################
+
 def generate_experiment_id():
     current_time = datetime.now()
     return current_time.strftime("%y%m%d_%H%M%S")
@@ -144,3 +154,7 @@ class ExtrinsicSampler():
         btr = deepcopy(self._btr)
         btr['world']['objects'][sample_obj]['velocity'] = velocity
         return btr
+
+def node_match(node1, node2):
+    print(node1, node2)
+    return node1 == node2

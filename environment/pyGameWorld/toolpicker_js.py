@@ -785,8 +785,8 @@ class ToolPicker(object):
         return world.objects
 
     def exposeWorld(self):
-        warnings.warn(
-            "Exposing world returns a python object -- may differ from JS used in ToolPicker")
+        # warnings.warn(
+            # "Exposing world returns a python object -- may differ from JS used in ToolPicker")
         return loadFromDict(self._worlddict)
 
     def toolBB(self, toolname): # bounding box

@@ -15,3 +15,5 @@ pyGameWorld.egg-info/PKG-INFO
 pyGameWorld.egg-info/SOURCES.txt
 pyGameWorld.egg-info/dependency_links.txt
 pyGameWorld.egg-info/top_level.txt
+test/test.py
+test/test_bayesian.py

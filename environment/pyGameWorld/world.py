@@ -152,7 +152,7 @@ class PGWorld(object):
     ########################################
     # Adding things to the world
     ########################################
-    def addPoly(self, name, vertices, color, density = None, elasticity = None, friction = None):
+    def addPoly(self, name, vertices, color, velocity = None, density = None, elasticity = None, friction = None):
         assert name not in self.objects.keys(), "Name already taken: " + name
         if density is None:
             density = self.def_density
@@ -161,11 +161,11 @@ class PGWorld(object):
         if friction is None:
             friction = self.def_friction
 
-        thisObj = PGPoly(name, self._cpSpace, vertices, density, elasticity, friction, color)
+        thisObj = PGPoly(name, self._cpSpace, vertices, velocity, density, elasticity, friction, color)
         self.objects[name] = thisObj
         return thisObj
 
-    def addBox(self, name, bounds, color, density = None, elasticity = None, friction = None):
+    def addBox(self, name, bounds, color, velocity = None, density = None, elasticity = None, friction = None):
         assert name not in self.objects.keys(), "Name already taken: " + name
         assert len(bounds) == 4, "Need four numbers for bounds [l,b,r,t]"
         if density is None:
@@ -181,11 +181,11 @@ class PGWorld(object):
         t = bounds[3]
         vertices = [(l,b), (l,t), (r,t), (r,b)]
 
-        thisObj = PGPoly(name, self._cpSpace, vertices, density, elasticity, friction, color)
+        thisObj = PGPoly(name, self._cpSpace, vertices, velocity, density, elasticity, friction, color)
         self.objects[name] = thisObj
         return thisObj
 
-    def addBall(self, name, position, radius, color, density = None, elasticity = None, friction = None):
+    def addBall(self, name, position, radius, color, velocity = None, density = None, elasticity = None, friction = None):
         assert name not in self.objects.keys(), "Name already taken: " + name
         if density is None:
             density = self.def_density
@@ -194,11 +194,11 @@ class PGWorld(object):
         if friction is None:
             friction = self.def_friction
 
-        thisObj = PGBall(name, self._cpSpace, position, radius, density, elasticity, friction, color)
+        thisObj = PGBall(name, self._cpSpace, position, radius, velocity, density, elasticity, friction, color)
         self.objects[name] = thisObj
         return thisObj
 
-    def addSegment(self, name, p1, p2, width, color, density = None, elasticity = None, friction = None):
+    def addSegment(self, name, p1, p2, width, color, velocity = None, density = None, elasticity = None, friction = None):
         assert name not in self.objects.keys(), "Name already taken: " + name
         if density is None:
             density = self.def_density
@@ -207,11 +207,11 @@ class PGWorld(object):
         if friction is None:
             friction = self.def_friction
 
-        thisObj = PGSeg(name, self._cpSpace, p1, p2, width, density, elasticity, friction, color)
+        thisObj = PGSeg(name, self._cpSpace, p1, p2, width, velocity, density, elasticity, friction, color)
         self.objects[name] = thisObj
         return thisObj
 
-    def addContainer(self, name, ptlist, width, inner_color, outer_color, density = None, elasticity = None, friction = None):
+    def addContainer(self, name, ptlist, width, inner_color, outer_color, velocity = None, density = None, elasticity = None, friction = None):
         assert name not in self.objects.keys(), "Name already taken: " + name
         if density is None:
             density = self.def_density
@@ -220,11 +220,11 @@ class PGWorld(object):
         if friction is None:
             friction = self.def_friction
 
-        thisObj = PGContainer(name, self._cpSpace, ptlist, width, density, elasticity, friction, inner_color, outer_color)
+        thisObj = PGContainer(name, self._cpSpace, ptlist, width, velocity, density, elasticity, friction, inner_color, outer_color)
         self.objects[name] = thisObj
         return thisObj
 
-    def addCompound(self, name, polys, color, density = None, elasticity = None, friction = None):
+    def addCompound(self, name, polys, color, velocity = None, density = None, elasticity = None, friction = None):
         assert name not in self.objects.keys(), "Name already taken: " + name
         if density is None:
             density = self.def_density
@@ -233,7 +233,7 @@ class PGWorld(object):
         if friction is None:
             friction = self.def_friction
 
-        thisObj = PGCompound(name, self._cpSpace, polys, density, elasticity, friction, color)
+        thisObj = PGCompound(name, self._cpSpace, polys, velocity, density, elasticity, friction, color)
         self.objects[name] = thisObj
         return thisObj
 
@@ -255,13 +255,13 @@ class PGWorld(object):
         self.objects[name] = thisObj
         return thisObj
 
-    def addPlacedPoly(self, name, vertices, color, density = None, elasticity = None, friction = None):
-        thisObj = self.addPoly(name, vertices, color, density, elasticity, friction)
+    def addPlacedPoly(self, name, vertices, color, velocity = None, density = None, elasticity = None, friction = None):
+        thisObj = self.addPoly(name, vertices, color, velocity, density, elasticity, friction)
         thisObj._cpShape.collision_type = COLTYPE_PLACED
         return thisObj
 
-    def addPlacedCompound(self, name, polys, color, density = None, elasticity = None, friction = None):
-        thisObj = self.addCompound(name, polys, color, density, elasticity, friction)
+    def addPlacedCompound(self, name, polys, color, velocity = None, density = None, elasticity = None, friction = None):
+        thisObj = self.addCompound(name, polys, color, velocity, density, elasticity, friction)
         for cpsh in thisObj._cpShapes:
             cpsh.collision_type = COLTYPE_PLACED
         return thisObj
@@ -591,13 +591,14 @@ def loadFromDict(d):
         elasticity = float(o.get('elasticity', def_elast))
         friction = float(o.get('friction', def_fric))
         density = float(o.get('density', d['defaults']['density']))
+        velocity = o.get('velocity', (0.0, 0.0))
 
         if o['type'] == 'Poly':
-            pgw.addPoly(nm, o['vertices'], word2Color(o['color']), density, elasticity, friction)
+            pgw.addPoly(nm, o['vertices'], word2Color(o['color']), velocity, density, elasticity, friction)
         elif o['type'] == 'Ball':
-            pgw.addBall(nm, o['position'], o['radius'], word2Color(o['color']), density, elasticity, friction)
+            pgw.addBall(nm, o['position'], o['radius'], word2Color(o['color']), velocity, density, elasticity, friction)
         elif o['type'] == 'Segment':
-            pgw.addSegment(nm, o['p1'], o['p2'], o['width'], word2Color(o['color']), density, elasticity, friction)
+            pgw.addSegment(nm, o['p1'], o['p2'], o['width'], word2Color(o['color']), velocity, density, elasticity, friction)
         elif o['type'] == 'Container':
             if 'innerColor' not in o:
                 if 'color' in o:
@@ -610,7 +611,7 @@ def loadFromDict(d):
                 oc = DEFAULT_COLOR
             else:
                 oc = word2Color(o['outerColor'])
-            pgw.addContainer(nm, o['points'], o['width'], ic, oc, density, elasticity, friction)
+            pgw.addContainer(nm, o['points'], o['width'], ic, oc, velocity, density, elasticity, friction)
         elif o['type'] == 'Goal':
             pgw.addPolyGoal(nm, o['vertices'], word2Color(o['color']))
         elif o['type'] == 'Compound':
