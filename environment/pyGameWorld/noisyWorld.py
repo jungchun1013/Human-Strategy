@@ -146,7 +146,7 @@ def noisifyWorld(gameworld, noise_position_static = 5., noise_position_moving = 
     if noise_position_static > 0:
         # Make object groups (things that move together because they are touching)
         obj_groups = []
-        objs = w.objects.values()
+        objs = list(w.objects.values())
         for i in range(len(objs)-1):
             o1 = objs[i]
             if o1.name not in wall_names:

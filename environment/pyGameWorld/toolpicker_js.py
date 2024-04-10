@@ -570,6 +570,144 @@ class ToolPicker(object):
             wd = updateObjects(wd, objAdjust)
         return self._ctx.call('getGWPathAndRotPlacement', wd, self._tools[toolname],
                               position, maxtime, self.bts, ndict, returnDict)
+    # NOTE - new
+    def runFullNoisyStatePath(self, toolname, position, maxtime=20.,
+                     noise_position_static = 5., noise_position_moving = 5.,
+                     noise_collision_direction = .2, noise_collision_elasticity = .2, noise_gravity = .1,
+                     noise_object_friction = .1, noise_object_density = .1, noise_object_elasticity = .1,
+                     returnDict=False, stopOnGoal=True, objAdjust=None):
+        print("runFullNoisyStatePath")
+        assert toolname in self._tools.keys(), "That tool does not exist!"
+        tool = self._tools[toolname]
+        #if noise_object_friction > 0 or noise_object_density > 0 or noise_object_elasticity > 0:
+        #    warnings.warn("Noise on objects not yet implemented -- will have no effect")
+        ndict = {
+            'noise_position_static': noise_position_static,
+            'noise_position_moving': noise_position_moving,
+            'noise_collision_direction': noise_collision_direction,
+            'noise_collision_elasticity': noise_collision_elasticity,
+            'noise_gravity': noise_gravity,
+            'noise_object_friction': noise_object_friction,
+            'noise_object_density': noise_object_density,
+            'noise_object_elasticity': noise_object_elasticity
+        }
+        if all([v == 0 for v in ndict.values()]):
+            ndict = {}
+        if stopOnGoal:
+            wd = self._worlddict
+        else:
+            wd = self._wdng
+        if objAdjust:
+            wd = updateObjects(wd, objAdjust)
+        return self._ctx.call('getGWStatePathPlacement', wd, self._tools[toolname],
+                              position, maxtime, self.bts, ndict, returnDict)
+
+    # NOTE - new
+    def runNoisyPlacementStatePath(self, toolname, position, maxtime=20.,
+                     noise_position_static = 5., noise_position_moving = 5.,
+                     noise_collision_direction = .2, noise_collision_elasticity = .2, noise_gravity = .1,
+                     noise_object_friction = .1, noise_object_density = .1, noise_object_elasticity = .1,
+                     returnDict=False, stopOnGoal=True, objAdjust=None):
+        print("runNoisyPlacementStatePath")
+        assert toolname in self._tools.keys(), "That tool does not exist!"
+        tool = self._tools[toolname]
+        #if noise_object_friction > 0 or noise_object_density > 0 or noise_object_elasticity > 0:
+        #    warnings.warn("Noise on objects not yet implemented -- will have no effect")
+        ndict = {
+            'noise_position_static': noise_position_static,
+            'noise_position_moving': noise_position_moving,
+            'noise_collision_direction': noise_collision_direction,
+            'noise_collision_elasticity': noise_collision_elasticity,
+            'noise_gravity': noise_gravity,
+            'noise_object_friction': noise_object_friction,
+            'noise_object_density': noise_object_density,
+            'noise_object_elasticity': noise_object_elasticity
+        }
+        if all([v == 0 for v in ndict.values()]):
+            ndict = {}
+        if stopOnGoal:
+            wd = self._worlddict
+        else:
+            wd = self._wdng
+        if objAdjust:
+            wd = updateObjects(wd, objAdjust)
+        return self._ctx.call('getGWStatePathPlacement', wd, self._tools[toolname],
+                              position, maxtime, self.bts, ndict, returnDict)
+
+    # NOTE - all in one -> noise, tool
+    def runStatePath(self, toolname=None, position=None, maxtime=20.,
+                     noise_position_static = 5., noise_position_moving = 5.,
+                     noise_collision_direction = .2, noise_collision_elasticity = .2, noise_gravity = .1,
+                     noise_object_friction = .1, noise_object_density = .1, noise_object_elasticity = .1,collisionSlop=.2001,
+                     returnDict=False, stopOnGoal=True, objAdjust=None, noisy=False):
+        if toolname:
+            assert toolname in self._tools.keys(), "That tool does not exist!"
+            tool = self._tools[toolname]
+            if self.checkPlacementCollide(toolname, position):
+                if returnDict:
+                    return None, None, None, -1
+                else:
+                    return None, None, None, -1
+        else:
+            tool = None
+
+
+        if noisy:
+            ndict = {
+                'noise_position_static': noise_position_static,
+                'noise_position_moving': noise_position_moving,
+                'noise_collision_direction': noise_collision_direction,
+                'noise_collision_elasticity': noise_collision_elasticity,
+                'noise_gravity': noise_gravity,
+                'noise_object_friction': noise_object_friction,
+                'noise_object_density': noise_object_density,
+                'noise_object_elasticity': noise_object_elasticity
+            }
+        else:
+            ndict = {}
+        if all([v == 0 for v in ndict.values()]):
+            ndict = {}
+
+        if stopOnGoal:
+            wd = self._worlddict
+        else:
+            wd = self._wdng
+        if objAdjust:
+            wd = updateObjects(wd, objAdjust)
+        path, col, end, t = self._ctx.call('getGWStatePathAll', wd, tool, position, maxtime, self.bts, ndict, returnDict)
+        fcol = filterCollisionEvents(col, collisionSlop)
+        r = [path, fcol, end, t]
+        return r
+
+
+    def runStatePathForce(self, force_time, maxtime=20.,
+                     noise_position_static = 5., noise_position_moving = 5.,
+                     noise_collision_direction = .2, noise_collision_elasticity = .2, noise_gravity = .1,
+                     noise_object_friction = .1, noise_object_density = .1, noise_object_elasticity = .1,
+                     returnDict=False, stopOnGoal=True, objAdjust=None, noisy=False):
+        if noisy:
+            ndict = {
+                'noise_position_static': noise_position_static,
+                'noise_position_moving': noise_position_moving,
+                'noise_collision_direction': noise_collision_direction,
+                'noise_collision_elasticity': noise_collision_elasticity,
+                'noise_gravity': noise_gravity,
+                'noise_object_friction': noise_object_friction,
+                'noise_object_density': noise_object_density,
+                'noise_object_elasticity': noise_object_elasticity
+            }
+        else:
+            ndict = {}
+        if all([v == 0 for v in ndict.values()]):
+            ndict = {}
+        if stopOnGoal:
+            wd = self._worlddict
+        else:
+            wd = self._wdng
+        if objAdjust:
+            wd = updateObjects(wd, objAdjust)
+        w = loadFromDict(wd)
+        return self._ctx.call('getGWStatePathForce', wd, force_time, maxtime, self.bts, ndict, returnDict)
 
     def runNoisyGeomPath(self, toolname, position, maxtime=20.,
                      noise_position_static=0, noise_position_moving=0,

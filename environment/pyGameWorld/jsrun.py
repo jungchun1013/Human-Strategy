@@ -3,6 +3,7 @@ from .world import loadFromDict
 from .helpers import filterCollisionEvents
 import copy
 import os, json
+from .noisyWorld import noisifyWorld
 
 __all__ = ["jsRunGame", "pyRunGame", "jsGetPath", "pyGetPath", "jsGetStatePath", "pyGetStatePath", "jsGetCollisions", "pyGetCollisions", "pyGetCollisionsAddForces", "pyGetCollisionsPlacement"]
 
@@ -180,7 +181,7 @@ def addTool(worldDict, toolverts, pos):
 
     return worldDict
 
-def pyGetCollisionsPlacement(gameworld, tp, toolname, position, maxtime = 20., stepSize = .1, collisionSlop = 0.2001):
+def pyGetCollisionsPlacement(gameworld, tp, toolname, position, maxtime = 20., stepSize = .1, collisionSlop = 0.2001, is_noisy = False):
     running = True
     t = 0
     pathdict = dict()
@@ -204,7 +205,7 @@ def pyGetCollisionsPlacement(gameworld, tp, toolname, position, maxtime = 20., s
     collisions = filterCollisionEvents(gameworld.collisionEvents, collisionSlop)
     return pathdict, collisions, gameworld.checkEnd(), t
 
-def pyGetCollisions(gameworld, maxtime = 20., stepSize = .1, collisionSlop = 0.2001):
+def pyGetCollisions(gameworld, maxtime = 20., stepSize = .1, collisionSlop = 0.2001, is_noisy=False):
     running = True
     t = 0
     pathdict = dict()
@@ -225,7 +226,7 @@ def pyGetCollisions(gameworld, maxtime = 20., stepSize = .1, collisionSlop = 0.2
     collisions = filterCollisionEvents(gameworld.collisionEvents, collisionSlop)
     return pathdict, collisions, gameworld.checkEnd(), t
 
-def pyGetCollisionsAddForces(gameworld, force_times={}, maxtime = 20., stepSize = .1, collisionSlop = 0.2001):
+def pyGetCollisionsAddForces(gameworld, force_times={}, maxtime = 20., stepSize = .1, collisionSlop = 0.2001, is_noisy=False):
     running = True
     t = 0
     pathdict = dict()

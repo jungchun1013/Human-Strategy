@@ -615,7 +615,7 @@ def loadFromDict(d):
         elif o['type'] == 'Goal':
             pgw.addPolyGoal(nm, o['vertices'], word2Color(o['color']))
         elif o['type'] == 'Compound':
-            pgw.addCompound(nm, o['polys'], word2Color(o['color']), density, elasticity, friction)
+            pgw.addCompound(nm, o['polys'], word2Color(o['color']), velocity, density, elasticity, friction)
         else:
             raise Exception("Invalid object type given")
 

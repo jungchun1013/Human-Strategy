@@ -312,7 +312,7 @@ def drawPathSingleImageWithTools(tp, path, pathSize=3, lighten_amt=.5, worlddict
                 poss = path[onm][0]
             else:
                 poss = [path[onm][i][0:2] for i in range(0, len(path[onm]))]
-            #for p in poss:
+            # for p in poss:
             #    pg.draw.circle(sc, pthcol, makept(p), pathSize)
             pts = _filter_unique([makept(p) for p in poss])
 
@@ -322,8 +322,8 @@ def drawPathSingleImageWithTools(tp, path, pathSize=3, lighten_amt=.5, worlddict
                 for i,pt in enumerate(pts[:-1]):
                     color = cols[i]
                     pg.draw.line(sc, color, pt, pts[i+1], 3)
-                    #_draw_line_gradient(pt, pts[i+1], 5, col, sc)
-                #pg.draw.lines(sc, pthcol, False, pts, pathSize)
+                    # _draw_line_gradient(pt, pts[i+1], 5, col, sc)
+                # pg.draw.lines(sc, pthcol, False, pts, pathSize)
     # Draw the initial tools, lightened
     for onm, o in world.objects.items():
         if not o.isStatic():
@@ -336,6 +336,7 @@ def drawPathSingleImageWithTools(tp, path, pathSize=3, lighten_amt=.5, worlddict
                 o.setRot(path[onm][1][-1])
             else:
                 o.setPos(path[onm][-1][0:2])
+                o.setRot(path[onm][-1][2])
             _draw_obj(o, sc, makept)
 
     return sc
@@ -375,6 +376,7 @@ def drawPathSingleImage(worlddict, path, pathSize=3, lighten_amt=.5):
                 o.setRot(path[onm][1][-1])
             else:
                 o.setPos(path[onm][-1][0:2])
+                o.setRot(path[onm][-1][2])
             _draw_obj(o, sc, makept)
 
     return sc
@@ -417,6 +419,7 @@ def drawMultiPathSingleImage(worlddict, path_set, pathSize=3, lighten_amt=.5):
                     o.setRot(path[onm][1][-1])
                 else:
                     o.setPos(path[onm][-1][0:2])
+                    o.setRot(path[onm][-1][2])
                 _draw_obj(o, sc, makept)
 
     return sc

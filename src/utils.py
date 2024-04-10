@@ -22,10 +22,13 @@ def generate_experiment_id():
     current_time = datetime.now()
     return current_time.strftime("%y%m%d_%H%M%S")
 
-def draw_path(tp, path_dict, img_name):
+def draw_path(tp, path_dict, img_name, tool_pos=None):
     if not path_dict: return
     pg.display.set_mode((10,10))
     sc = drawPathSingleImageWithTools(tp, path_dict)
+    if tool_pos:
+        tool_pos = [tool_pos[0], 600-tool_pos[1]]
+        pg.draw.circle(sc, (0,0,255), tool_pos, 5)
     img = sc.convert_alpha()
     pg.image.save(img, img_name)
 
@@ -47,24 +50,12 @@ def print_stats(trial_stats):
     for i in range(2,7):
         print(str(5*i)+':', len([str(5*j) for j in trial_stats if j <5*i])/len(trial_stats))
 
-def get_prior_SSUP(tp): # NOTE - add tp
-    movable_obj_dict = {i:j for i,j in tp.objects.items() if j.color in [(255, 0, 0, 255), (0, 0, 255, 255)]}
-    obj = choice(list(movable_obj_dict.keys()))
+def get_prior_SSUP(tp, movable_objects): # NOTE - add tp
+    obj = choice(movable_objects)
     BB = objectBoundingBox(tp.objects[obj])
     x = randint(BB[0][0]-20,BB[1][0]+20)
     range_y = choices([(0,BB[0][1]), (BB[1][1],600)], weights=[BB[0][1]-0, 600-BB[1][1]], k=1)[0]
     y = randint(range_y[0],range_y[1])
-
-    # if obj == 'Catapult':
-    #     x = randint(150-20, 425+20)
-    # elif obj == 'Ball':
-    #     # x = randint(112-20, 200+20)
-    #     x = randint(90-20, 90+20)
-    # else:
-    #     # x = randint(112-20, 200+20)
-    #     x = randint(90-20, 90+20)
-    # y = randint(0,600)
-
     return (x,y)
 
 def get_prior_catapult(obj_dict):
@@ -145,14 +136,14 @@ class ExtrinsicSampler():
     def sample_vel(self, sample_obj):
         rand_rad = random()*2*np.pi
         rand_scale = randint(1,50)*10
-        if sample_obj == "KeyBall":
-            rand_scale = randint(1,50) * 2
-        if sample_obj == "CataBall":
-            rand_rad = 0.5*np.pi + random() * 0.5*np.pi
-
         velocity = (np.cos(rand_rad) * rand_scale,  np.sin(rand_rad) * rand_scale)
         btr = deepcopy(self._btr)
         btr['world']['objects'][sample_obj]['velocity'] = velocity
+        return btr
+    def sample_ang(self, sample_obj):
+        rand_ang = randint(1,50)*10*2*np.pi
+        btr = deepcopy(self._btr)
+        btr['world']['objects'][sample_obj]['angular_velocity'] = rand_ang
         return btr
 
 def node_match(node1, node2):

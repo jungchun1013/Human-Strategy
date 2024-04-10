@@ -225,6 +225,15 @@ class PGBall(PGObject):
         else:
             return self._cpBody.position
 
+    def kick(self, impulse, position, unsafe = False):
+        assert not self.isStatic(), "Cannot kick a static object"
+        if not unsafe:
+            for s in self._exposeShapes():
+                if not s.point_query(position):
+                    raise AssertionError("Must kick an object within the object (or set as unsafe)")
+        # self._cpBody.apply_impulse_at_world_point(impulse, position)
+        self._cpBody.apply_impulse_at_local_point(impulse, position)
+
     radius = property(getRadius)
     area = property(getArea)
 

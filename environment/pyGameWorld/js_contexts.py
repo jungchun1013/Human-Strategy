@@ -160,6 +160,96 @@ function getGWStatePath(worldDict, maxtime, stepSize, noiseDict, returnNewWorld)
         return [pathdict, w.checkEnd(), t]
     }}
 }}
+function getGWCollisionStatePath(worldDict, toolverts, pos, maxtime, stepSize, noiseDict, returnNewWorld) {{
+    var w = pg.loadFromDict(worldDict)
+    if (typeof(noiseDict) !== 'undefined' && isntEmpty(noiseDict)) {{
+        w = applyNoise(w, noiseDict)
+    }}
+    if (returnNewWorld){{
+        var returnWorld = w.toDict()
+    }}
+    var running = true
+    var t = 0
+    var pathdict = {{}}
+    var tracknames = []
+    for (onm in w.objects) {{
+        var o = w.objects[onm]
+        if (!o.isStatic()) {{
+            tracknames.push(onm)
+            pathdict[onm] = [[o.getPos()[0], o.getPos()[1], o.getRot(), o.getVel()[0], o.getVel()[1]]]
+        }}
+    }}
+    while (running) {{
+        w.step(stepSize)
+        t += stepSize
+        for (var i = 0; i < tracknames.length; i++) {{
+            onm = tracknames[i]
+            pathdict[onm].push([w.objects[onm].getPos()[0], w.objects[onm].getPos()[1], w.objects[onm].getRot(), w.objects[onm].getVel()[0], w.objects[onm].getVel()[1]])
+        }}
+        if (w.checkEnd() || (t >= maxtime)) {{
+            running = false
+        }}
+    }}
+    collisions = w.getCollisionEvents()
+    if (returnNewWorld) {{
+        return [pathdict, collisions, w.checkEnd(), t, returnWorld]
+    }} else {{
+        return [pathdict, collisions, w.checkEnd(), t]
+    }}
+}}
+
+function getGWCollisionStatePathForce(worldDict, forceTimes, maxtime, stepSize, noiseDict, returnNewWorld) {{
+    var w = pg.loadFromDict(worldDict)
+    if (typeof(noiseDict) !== 'undefined' && isntEmpty(noiseDict)) {{
+        w = applyNoise(w, noiseDict)
+    }}
+    if (returnNewWorld){{
+        var returnWorld = w.toDict()
+    }}
+    var running = true
+    var t = 0
+    var pathdict = {{}}
+    var tracknames = []
+    for (onm in w.objects) {{
+        var o = w.objects[onm]
+        if (!o.isStatic()) {{
+            tracknames.push(onm)
+            pathdict[onm] = [[o.getPos()[0], o.getPos()[1], o.getRot(), o.getVel()[0], o.getVel()[1]]]
+        }}
+    }}
+    while (running) {{
+        w.step(stepSize)
+        t += stepSize
+        if (t in forceTimes) {{
+            forces = forceTimes[t]
+            for (obj_force in forces) {{
+                onm = obj_force[0]
+                impulse = obj_force[1]
+                position = obj_force[2]
+                for (onm2 in w.objects) {{
+                    var o = w.objects[onm2]
+                    if (onm2 == 'KeyBall' && typeof(o) === 'object') {{
+                        o.kick(impulse, position)
+                    }}
+                }}
+            }}
+        }}
+        for (var i = 0; i < tracknames.length; i++) {{
+            onm = tracknames[i]
+            pathdict[onm].push([w.objects[onm].getPos()[0], w.objects[onm].getPos()[1], w.objects[onm].getRot(), w.objects[onm].getVel()[0], w.objects[onm].getVel()[1]])
+        }}
+        if (w.checkEnd() || (t >= maxtime)) {{
+            running = false
+        }}
+    }}
+    collisions = w.getCollisionEvents()
+    if (returnNewWorld) {{
+        return [pathdict, collisions, w.checkEnd(), t, returnWorld]
+    }} else {{
+        return [pathdict, collisions, w.checkEnd(), t]
+    }}
+}}
+
 function getGWGeomPath(worldDict, maxtime, stepSize, noiseDict, returnNewWorld) {{
     var w = pg.loadFromDict(worldDict)
     if (typeof(noiseDict) !== 'undefined' && isntEmpty(noiseDict)) {{
@@ -369,5 +459,17 @@ function getGWCollisionPathAndRotPlacement(worldDict, toolverts, pos, maxtime, s
 function getGWGeomPathPlacement(worldDict, toolverts, pos, maxtime, stepSize, noiseDict, returnNewWorld) {{
     var w = addTool(worldDict, toolverts, pos)
     return getGWGeomPath(w, maxtime, stepSize, noiseDict, returnNewWorld)
+}}
+
+function getGWStatePathAll(worldDict, toolverts, pos, maxtime, stepSize, noiseDict, returnNewWorld) {{
+    if (toolverts !== null) {{
+        var w = addTool(worldDict, toolverts, pos)
+    }} else {{
+        var w = worldDict
+    }}
+    return getGWCollisionStatePath(w, toolverts, pos, maxtime, stepSize, noiseDict, returnNewWorld)
+}}
+function getGWStatePathForce(worldDict, forceTimes, maxtime, stepSize, noiseDict, returnNewWorld) {{
+    return getGWCollisionStatePathForce(worldDict, forceTimes, maxtime, stepSize, noiseDict, returnNewWorld)
 }}
 '''
