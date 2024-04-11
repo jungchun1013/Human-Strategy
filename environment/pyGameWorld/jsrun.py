@@ -239,7 +239,7 @@ def pyGetCollisionsAddForces(gameworld, force_times={}, maxtime = 20., stepSize 
     while running:
         gameworld.step(stepSize)
         t += stepSize
-        if t in force_times.keys():
+        if t in force_times:
             for obj_force in force_times[t]:
                 onm = obj_force[0]
                 impulse = obj_force[1]

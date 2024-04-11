@@ -22,15 +22,20 @@ def get_simluation_result_from_model(args, btr, sample_obj, sample_ext, graph):
     gmm_sample = graph.nodes[sample_obj]['gmm'].sample()[0][0]
     if sample_obj in args.tool_objects:
         gmm_sample_pos = list(gmm_sample[0:2])
-        path_dict, success, _ = tp.observePlacementStatePath(
-            toolname=sample_obj,
-            position=gmm_sample_pos
-        )
-        path, collisions, end, _ = pyGetCollisionsPlacement(
-            tp.world,
-            tp,
+        # path_dict, success, _ = tp.observePlacementStatePath(
+        #     toolname=sample_obj,
+        #     position=gmm_sample_pos
+        # )
+        # path, collisions, end, _ = pyGetCollisionsPlacement(
+        #     tp.world,
+        #     tp,
+        #     sample_obj,
+        #     gmm_sample_pos)
+        path_dict, collisions, success, _ = tp.runStatePath(
             sample_obj,
-            gmm_sample_pos)
+            gmm_sample_pos,
+            noisy=False
+        )
         init_pose = [gmm_sample_pos[0], gmm_sample_pos[1], 0, 0, 0]
     else:
         # btr['world']['objects'][sample_obj]['position'] = gmm_sample[0:2]
@@ -41,55 +46,70 @@ def get_simluation_result_from_model(args, btr, sample_obj, sample_ext, graph):
         path, collisions, end, _ = pyGetCollisions(tp.world)
         init_pose = path_dict[sample_obj][0]
     path_info = path_dict, collisions, success
-    return sample_obj, sample_ext, init_pose, path_info
+    return sample_obj, sample_ext, init_pose, init_pose, path_info
 
 
-def simulate(args, btr, sample_obj, sample_ext, init_pose):
+def simulate(args, btr, sample_obj, sample_ext, init_pose, noisy=False):
     '''
         sample from given object and extrinsics type
     '''
     tp = args.tp
     if sample_ext in ['pos', 'vel', 'ang']: # fixed pos, smaple from path
-        btr['world']['objects'][sample_obj]['position'] = gmm_sample[0:2]
-        btr['world']['objects'][sample_obj]['rotation'] = gmm_sample[2]
-        btr['world']['objects'][sample_obj]['velocity'] = gmm_sample[3:]
+        btr['world']['objects'][sample_obj]['position'] = init_pose[0:2]
+        btr['world']['objects'][sample_obj]['rotation'] = init_pose[2]
+        btr['world']['objects'][sample_obj]['velocity'] = init_pose[3:]
         tp = ToolPicker(btr)
-        path_dict, success, _ = tp.observeStatePath()
-        path, collisions, end, _ = pyGetCollisions(tp.world)
-        # path_dict, collisions, success, _ = tp.runStatePath(noisy=noisy)
+        # path_dict, success, _ = tp.observeStatePath()
+        # path, collisions, end, _ = pyGetCollisions(tp.world)
+        path_dict, collisions, success, _ = tp.runStatePath(noisy=noisy)
         init_pose = path_dict[sample_obj][0]
     elif sample_ext == 'tool':
         sample_pos = init_pose[0:2]
-        path_dict, success, _ = tp.observePlacementStatePath(
-            toolname=sample_obj,
-            position=sample_pos
-        )
-        path, collisions, end, _ = pyGetCollisionsPlacement(
-            tp.world,
-            tp,
-            sample_obj,
-            sample_pos,
-        )
-        # path_dict, collisions, success, _ = tp.runStatePath(
+        # path_dict, success, _ = tp.observePlacementStatePath(
+        #     toolname=sample_obj,
+        #     position=sample_pos
+        # )
+        # path, collisions, end, _ = pyGetCollisionsPlacement(
+        #     tp.world,
+        #     tp,
         #     sample_obj,
         #     sample_pos,
-        #     noisy=noisy
         # )
-        init_pose = [sample_pos[0], sample_pos[1], 0, 0, 0]
+        path_dict, collisions, success, _ = tp.runStatePath(
+            sample_obj,
+            sample_pos,
+            noisy=noisy
+        )
+        init_pose = init_pose
     elif sample_ext == 'kick':
-        init_pose = {
-            0.0:[[sample_obj, impulse, sample_pos]],
-            0.1:[[sample_obj, impulse, sample_pos]],
-            0.2:[[sample_obj, impulse, sample_pos]]
-        }
+        # init_pose = {
+        #     0.0:[[sample_obj, impulse, sample_pos]],
+        #     0.1:[[sample_obj, impulse, sample_pos]],
+        #     0.2:[[sample_obj, impulse, sample_pos]]
+        # }
         path_dict, collisions, success, _ = pyGetCollisionsAddForces(
             tp.world,
-            force_times=force_times
+            force_times=init_pose
         )
         if not noisy:
             init_pose = path_dict[sample_obj][2]
         else:
             init_pose = force_times
+    elif sample_ext == 'exploit':
+        if sample_obj in tp.toolNames:
+            sample_pos = init_pose[0:2]
+            path_dict, collisions, success, _ = tp.runStatePath(
+                sample_obj,
+                sample_pos,
+                noisy=noisy
+            )
+        else:  
+            btr['world']['objects'][sample_obj]['position'] = init_pose[0:2]
+            btr['world']['objects'][sample_obj]['rotation'] = init_pose[2]
+            btr['world']['objects'][sample_obj]['velocity'] = init_pose[3:]
+            tp = ToolPicker(btr)
+            path_dict, collisions, success, _ = tp.runStatePath(noisy=noisy)
+
 
     path_info = path_dict, collisions, success
     return sample_obj, sample_ext, init_pose, path_info
@@ -111,6 +131,7 @@ def sample_and_simulate(args, btr, sample_obj, sample_ext, noisy=False):
         # path, collisions, end, _ = pyGetCollisions(tp.world)
         path_dict, collisions, success, _ = tp.runStatePath(noisy=noisy)
         init_pose = path_dict[sample_obj][0]
+        sample_pose = init_pose
     elif sample_ext == 'tool':
         sample_pos = get_prior_SSUP(args.tp0, args.movable_objects)
         # path_dict, success, t = tp.observePlacementStatePath(
@@ -129,6 +150,7 @@ def sample_and_simulate(args, btr, sample_obj, sample_ext, noisy=False):
             noisy=noisy
         )
         init_pose = [sample_pos[0], sample_pos[1], 0, 0, 0]
+        sample_pose = init_pose
     elif sample_ext == 'kick':
         rand_rad = random()*2*np.pi
         random_scale = randint(1,50) * 10000
@@ -147,75 +169,71 @@ def sample_and_simulate(args, btr, sample_obj, sample_ext, noisy=False):
             tp.world,
             force_times=force_times
         )
-        if not noisy:
-            init_pose = path_dict[sample_obj][2]
-        else:
-            init_pose = force_times
+        init_pose = path_dict[sample_obj][2]
+        sample_pose = force_times
 
     path_info = path_dict, collisions, success
-    return sample_obj, sample_ext, init_pose, path_info
+    return sample_obj, sample_ext, init_pose, sample_pose, path_info
 
-def sample_from_counterfactual(args, strategies_graph):
+def sample_from_counterfactual(args, strategy_graph, noisy=False):
     '''
         do sampling
     '''
     success = False
-    while not success:
-        btr = args.btr
-        ext_prob = 0.1 if strategies_graph.full_placement_graphs else 0
-        obj_weight = sum([math.e**(-strategies_graph.obj_count[m]*0.3) for m in args.movable_objects])
-        tool_weight = sum([math.e**(-strategies_graph.obj_count[m]*0.3) for m in args.tool_objects])
-        ext_weights = [obj_weight, obj_weight, obj_weight, tool_weight, ext_prob]
-        ext_weights = [w/sum(ext_weights) for w in ext_weights]
-        sample_exts = rd.choice(
-            ['pos', 'vel', 'kick', 'tool', 'exploit'],
-            # ['pos', 'vel', 'ang', 'kick', 'tool', 'exploit'],
-            p=ext_weights,
-            size=2,
-            replace=False)
-        sample_ext = sample_exts[0]
-        if sample_ext == 'exploit':
-            graph = choice(strategies_graph.full_placement_graphs)
-            obj_list = [nd for nd in graph.nodes() if 'gmm' in graph.nodes[nd]]
-            # obj_weight = [ 1/len(graph.nodes[nd]['ext'])
-            #     for nd in graph.nodes() if 'gmm' in graph.nodes[nd]
-            # ]
-            obj_weight = [ math.e**(-strategies_graph.obj_count[nd]*0.3)
-                for nd in obj_list]
-            if obj_list:
-                sample_obj = choices(obj_list, weights=obj_weight)[0]
-                return get_simluation_result_from_model(args, btr, sample_obj, sample_ext, graph)
+    btr = args.btr
+    obj_weight = sum([math.e**(-strategy_graph.obj_count[m]*args.eps) for m in args.movable_objects])
+    tool_weight = sum([math.e**(-strategy_graph.obj_count[m]*args.eps) for m in args.tool_objects])
+    ext_prob = (obj_weight+tool_weight)/10 if strategy_graph.full_placement_graphs and any(strategy_graph.is_fpg_gmm_built) else 0
+    ext_weights = [0, obj_weight, obj_weight, tool_weight, ext_prob]
+    ext_weights = [w/sum(ext_weights) for w in ext_weights]
+    sample_ext = choices(
+        ['pos', 'vel', 'kick', 'tool', 'exploit'],
+        # ['pos', 'vel', 'ang', 'kick', 'tool', 'exploit'],
+        weights=ext_weights,
+        k=1)[0]
+    if sample_ext == 'exploit':
+        graph = choice(strategy_graph.full_placement_graphs)
+        graph_idx = strategy_graph.full_placement_graphs.index(graph)
+        obj_list = strategy_graph.fpg_gmm_list[graph_idx]
+        obj_weights = [ math.e**(-strategy_graph.obj_count[nd]*args.eps)
+            for nd in obj_list]
+        if obj_list:
+            sample_obj = choices(obj_list, weights=obj_weights)[0]
+            return get_simluation_result_from_model(args, btr, sample_obj, sample_ext, graph)
 
-            sample_ext = sample_exts[1]
+    ext_weights = [0, obj_weight, obj_weight, tool_weight]
+    ext_weights = [w/sum(ext_weights) for w in ext_weights]
+    sample_ext = choices(
+        ['pos', 'vel', 'kick', 'tool', ],
+        # ['pos', 'vel', 'ang', 'kick', 'tool', 'exploit'],
+        weights=ext_weights,
+        k=1)[0]
 
-        if sample_ext in ['pos', 'vel', 'ang']: # fixed pos, smaple from path
-            weights = [ math.e**(-strategies_graph.obj_count[m]*0.3)
-                for m in args.movable_objects
-            ]
-            sample_obj = choices(args.movable_objects, weights=weights, k=1)[0]
-        elif sample_ext == 'kick':
-            weights = [ math.e**(-strategies_graph.obj_count[m]*0.3)
-                for m in args.movable_objects
-            ]
-            sample_obj = choices(args.movable_objects, weights=weights, k=1)[0]
-        elif sample_ext == 'tool':
-            sample_obj = choice(args.tool_objects)
-        else:
-            print("No sample", sample_exts)
+    if sample_ext in ['pos', 'vel', 'ang']: # fixed pos, smaple from path
+        weights = [ math.e**(-strategy_graph.obj_count[m]*args.eps)
+            for m in args.movable_objects
+        ]
+        sample_obj = choices(args.movable_objects, weights=weights, k=1)[0]
+    elif sample_ext == 'kick':
+        weights = [ math.e**(-strategy_graph.obj_count[m]*args.eps)
+            for m in args.movable_objects
+        ]
+        sample_obj = choices(args.movable_objects, weights=weights, k=1)[0]
+    elif sample_ext == 'tool':
+        sample_obj = choice(args.tool_objects)
+    else:
+        print("No sample", sample_exts)
 
-        sample_obj, sample_ext, init_pose, path_info = sample_and_simulate(args, btr, sample_obj, sample_ext, noisy=True)
-        path_dict, collisions, success = path_info
-        if success:
-            print('Noisy Success:', sample_obj, sample_ext)
+    sample_obj, sample_ext, init_pose, sample_pose, path_info = sample_and_simulate(args, btr, sample_obj, sample_ext, noisy=noisy)
 
-    sample_obj, sample_ext, init_pose, path_info = sample_and_simulate(args, btr, sample_obj, sample_ext, noisy=False)
-    return sample_obj, sample_ext, init_pose, path_info
+    return sample_obj, sample_ext, init_pose, sample_pose, path_info
 
-def sample_from_strategy_graph(args, strategies_graph):
+def sample_from_strategy_graph(args, strategy_graph):
     '''
         do sample from gaussian process model in graph
     '''
-    g = choice(strategies_graph.full_placement_graphs)
+    g = choice(strategy_graph.full_placement_graphs)
+    g_idx = strategy_graph.full_placement_graphs.index(g)
     if all('model' in g.nodes[nd] for nd in g.nodes()
         if nd not in args.tp.toolNames
     ):
@@ -233,8 +251,8 @@ def sample_from_strategy_graph(args, strategies_graph):
             gpr = g.nodes[cur_nd]['model']
             samples = gpr.sample_y(sample_pos, n_samples=2)
             arr = np.array(samples)
-            sample_pos = np.transpose(arr, (0, 2, 1))
-            sample_pos = [item for sublist in sample_pos for item in sublist]
+            sample_pos = list(np.transpose(arr, (0, 2, 1)))
+            sample_pos = [list(item) for sublist in sample_pos for item in sublist]
             # print('Sampled:', cur_nd, sample_pos)
         return cur_nd, sample_pos
 
@@ -252,6 +270,7 @@ def run(args):
     args.experiment_id = generate_experiment_id()
     args.date = args.experiment_id[:6]
     args.time = args.experiment_id[7:]
+    args.eps = 0.2
     args.dir_name = os.path.join('data', args.date, args.time+'_'+args.tnm)
     os.makedirs(args.dir_name)
     with open(args.json_dir + args.tnm + '.json','r') as f:
@@ -265,41 +284,49 @@ def run(args):
     args.available_objects = args.movable_objects + args.tool_objects
     path_dict0, success, _ = args.tp0.observeStatePath()
     args.ext_sampler = ExtrinsicSampler(args.btr0, path_dict0)
-    counterfactual_run(args)
+    collect_and_test(args)
 
 
 
 def counterfactual_run(args):
     # NOTE - MechanismGraph
-    strategies_graph = StrategyGraph()
-    success = False
+    strategy_graph = StrategyGraph()
     image_num = 0
+    simulation_num = 0
     sample_num = 0
-    while not success:
+    for i in range(args.num_trial):
         args.btr = deepcopy(args.btr0)
         args.tp = ToolPicker(args.btr)
+        success = False
+        while not success:
+            sample_obj, sample_ext, init_pose, path_info = (
+                sample_from_counterfactual(args, strategy_graph, noisy=True)
+            )
+            path_dict, collisions, success = path_info
+            if collisions:
+                collisions = standardize_collisions(collisions)
+            simulation_num += 1
+            # if success:
+            #     print('Noisy Success:', sample_obj, sample_ext)
 
-        sample_obj, sample_ext, init_pose, path_info = (
-            sample_from_counterfactual(args, strategies_graph)
-        )
+        # attempt in real env after success in noisy PE
+        sample_obj, sample_ext, init_pose, path_info = simulate(args, args.btr, sample_obj, sample_ext, init_pose)
         path_dict, collisions, success = path_info
         if collisions:
             collisions = standardize_collisions(collisions)
-
-        # !SECTION
         if success:
-            print('Success:', sample_obj, sample_ext)
+            image_num += 1
+            print('Attempt Success:', image_num, sample_obj, sample_ext)
             img_name = str(image_num) + '_' + sample_obj + '.png'
             img_name = os.path.join(args.dir_name, img_name)
             # draw_path(args.tp0, path_dict, img_name)
-            strategies_graph.build_graph(args, sample_obj, init_pose, path_info)
+            strategy_graph.build_graph(args, sample_obj, init_pose, path_info)
             success = False
-            image_num += 1
             # sample
             sample_obj = None
             sample_ext = None
-            if strategies_graph.full_placement_graphs:
-                sample_obj, sample_poss = sample_from_strategy_graph(args, strategies_graph)
+            if strategy_graph.full_placement_graphs:
+                sample_obj, sample_poss = sample_from_strategy_graph(args, strategy_graph)
             if sample_obj is not None:
                 for s in sample_poss:
                     scaled_pos = list(s[0:2])
@@ -315,6 +342,80 @@ def counterfactual_run(args):
                     if success:
                         print('Sample Num:', sample_num)
                         sys.exit()
+        # else: # build model from nosiy simulation
+        #     print('Simulation:', simulation_num)
+        #     img_name = 'N' + str(simulation_num) + '_' + sample_obj + '.png'
+        #     img_name = os.path.join(args.dir_name, img_name)
+        #     # draw_path(args.tp0, path_dict, img_name)
+        #     strategy_graph.build_graph(args, sample_obj, init_pose, path_info)
+
+
+def collect_and_test(args):
+    # NOTE - MechanismGraph
+    strategy_graph = StrategyGraph()
+    image_num = 0
+    simulation_num = 0
+    sample_num = 0
+    while simulation_num < 100:
+        args.btr = deepcopy(args.btr0)
+        args.tp = ToolPicker(args.btr)
+        success = False
+        # SECTION - sample from noisy PE
+        while not success:
+            sample_obj, sample_ext, init_pose, sample_pose, path_info = (
+                sample_from_counterfactual(args, strategy_graph, noisy=True)
+            )
+            path_dict, collisions, success = path_info
+            if collisions:
+                collisions = standardize_collisions(collisions)
+            # print('Simulation:', sample_obj, sample_ext)
+            if success:
+                simulation_num += 1
+                print('Noisy Success:', simulation_num, sample_obj, sample_ext)
+                strategy_graph.build_graph(args, sample_obj, init_pose, path_info)
+        # !SECTION
+
+        # SECTION - attempt in real env after success in noisy PE
+        sample_obj, sample_ext, init_pose, path_info = simulate(args, args.btr, sample_obj, sample_ext, init_pose)
+        path_dict, collisions, success = path_info
+        if collisions:
+            collisions = standardize_collisions(collisions)
+        if (simulation_num + 1) % 20 == 0:
+            strategy_graph.merge_graph(args)
+            strategy_graph.train()
+        if success:
+            image_num += 1
+            print('Attempt Success:', image_num, sample_obj, sample_ext)
+            img_name = str(image_num) + '_' + sample_obj + '.png'
+            img_name = os.path.join(args.dir_name, img_name)
+            strategy_graph.build_graph(args, sample_obj, sample_pose, path_info)
+        # !SECTION
+    print('Start Testing')
+    strategy_graph.merge_graph(args)
+    strategy_graph.train()
+    for i in range(100):
+        sample_obj = None
+        sample_ext = None
+        if strategy_graph.full_placement_graphs:
+            sample_obj, sample_poss = sample_from_strategy_graph(args, strategy_graph)
+        if sample_obj is not None:
+            for s in sample_poss:
+                scaled_pos = list(s[0:2])
+                path_dict, success, _ =  args.tp0.observePlacementStatePath(
+                    toolname=sample_obj,
+                    position=scaled_pos
+                )
+                print(sample_obj, scaled_pos)
+                if success is not None:
+                    print('Sample:', sample_obj, scaled_pos, success)
+                    sample_num += 1
+                    img_name = os.path.join(args.dir_name, 
+                        'sample_from_graph'+str(sample_num)+'.png'
+                    )
+                    draw_path(args.tp0, path_dict, img_name, scaled_pos)
+                if success:
+                    print('Sample Num:', sample_num)
+                    sys.exit()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run SSUP')
@@ -322,7 +423,7 @@ if __name__ == "__main__":
     parser.add_argument('-a', '--algorithm',
                         help='SSUP/ours', default='SSUP')
     parser.add_argument('-t', '--num_trial',
-                        help='number of trials', type=int, default=250)
+                        help='number of trials', type=int, default=50)
     parser.add_argument('--tnm',
                         help='task name', type=str, default='CatapultAlt')
     parser.add_argument('--json_dir',
@@ -331,7 +432,7 @@ if __name__ == "__main__":
     parser.add_argument('-v', '--verbose',
                         help='Increase output verbosity', action='store_true')
     parser.add_argument('--eps',
-                        help='epsilon', type=int, default=0.2)
+                        help='epsilon', type=float, default=0.2)
     parser.add_argument('--eps-decay-rate',
                         help='epsilon decay rate', type=int, default=0.95)
     parser.add_argument('--max_attempt',

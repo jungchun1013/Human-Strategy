@@ -136,7 +136,7 @@ class ExtrinsicSampler():
     def sample_vel(self, sample_obj):
         rand_rad = random()*2*np.pi
         rand_scale = randint(1,50)*10
-        velocity = (np.cos(rand_rad) * rand_scale,  np.sin(rand_rad) * rand_scale)
+        velocity = [np.cos(rand_rad) * rand_scale,  np.sin(rand_rad) * rand_scale]
         btr = deepcopy(self._btr)
         btr['world']['objects'][sample_obj]['velocity'] = velocity
         return btr

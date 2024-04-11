@@ -24,6 +24,9 @@ class StrategyGraph():
         self.full_placement_idx = []
         self.obj_count = Counter()
         self.main_graph = nx.DiGraph()
+        self.is_fpg_gmm_built = []
+        self.is_fpg_gpr_built = []
+        self.fpg_gmm_list = []
 
     def build_graph(self, args, sample_obj, init_pose, path_info):
         path_dict, collisions, success = path_info
@@ -105,7 +108,6 @@ class StrategyGraph():
                 if cur_nd_name == sample_obj:
                     break
         if "Goal" in graph.nodes():
-            print(graph.edges())
             if sample_obj not in args.tp.toolNames:
                 self.path_graphs.append(graph)
             else:
@@ -119,8 +121,9 @@ class StrategyGraph():
                 if not is_isomorphic:
                     self.full_placement_graphs.append(graph)
                     self.full_placement_idx.append(0)
-                self.merge_graph(args)
-                self.train()
+                    self.is_fpg_gmm_built.append(False)
+                    self.is_fpg_gpr_built.append(False)
+                    self.fpg_gmm_list.append([])
 
         return graph
 
@@ -131,7 +134,6 @@ class StrategyGraph():
                     graph = self.add_strategy(graph, path)
             graph_idx = self.full_placement_graphs.index(graph)
             self.full_placement_idx[graph_idx] = len(self.path_graphs)
-            print(graph.edges())
             # log
             for node in graph.nodes():
                 if len([d for d in graph.nodes[node]['ext'] if d[0] is not None]) > 0:
@@ -140,13 +142,14 @@ class StrategyGraph():
                     print(node, len(graph.nodes[node]['ext']), len(tool_data))
                 else:
                     print(node, len(graph.nodes[node]['ext']), '*')
+            print('-')
             path_set = [path for node in graph.nodes() 
                 for path in graph.nodes[node]['path']
                 if node != 'Goal'
             ]
             node_str = '-'.join(graph.nodes())+'.png'
             img_name = os.path.join(args.dir_name, node_str)
-            draw_multi_paths(args.btr['world'], path_set, img_name)
+            draw_multi_paths(args.btr0['world'], path_set, img_name)
         self.path_graphs = []
 
     def add_strategy(self, graph, path):
@@ -223,3 +226,13 @@ class StrategyGraph():
                     #     mu, std = norm.fit(data_points)
                     #     print(mu, std)
                     #     graph.nodes[nd_j]['ext'] = (mu, std)
+        for i, g in enumerate(self.full_placement_graphs):
+            self.fpg_gmm_list[i] = [nd for nd in g.nodes() if 'gmm' in g.nodes[nd]]
+            if not self.is_fpg_gmm_built[i] and self.fpg_gmm_list:
+                self.is_fpg_gmm_built[i] = True
+            self.is_fpg_gpr_built[i] = all(
+                'model' in g.nodes[nd] for nd in g.nodes() 
+                if not list(g.predecessors(nd))
+            )
+
+                
