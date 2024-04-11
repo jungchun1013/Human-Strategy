@@ -368,7 +368,7 @@ def collect_and_test(args):
             path_dict, collisions, success = path_info
             if collisions:
                 collisions = standardize_collisions(collisions)
-            # print('Simulation:', sample_obj, sample_ext)
+            print('Simulation:', sample_obj, sample_ext)
             if success:
                 simulation_num += 1
                 print('Noisy Success:', simulation_num, sample_obj, sample_ext)
