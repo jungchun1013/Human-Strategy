@@ -135,6 +135,7 @@ class StrategyGraph():
             graph_idx = self.full_placement_graphs.index(graph)
             self.full_placement_idx[graph_idx] = len(self.path_graphs)
             # log
+            print(graph.edges())
             for node in graph.nodes():
                 if len([d for d in graph.nodes[node]['ext'] if d[0] is not None]) > 0:
                     data = graph.nodes[node]['ext']
@@ -150,7 +151,6 @@ class StrategyGraph():
             node_str = '-'.join(graph.nodes())+'.png'
             img_name = os.path.join(args.dir_name, node_str)
             draw_multi_paths(args.btr0['world'], path_set, img_name)
-        self.path_graphs = []
 
     def add_strategy(self, graph, path):
         for node in path.nodes():
@@ -162,6 +162,7 @@ class StrategyGraph():
 
     def train(self):
         for graph in self.full_placement_graphs:
+            # Train tools (no pred) gaussian model
             for nd in [nd for nd in graph.nodes() if not list(graph.predecessors(nd))]:
                 print("======",nd,"======")
                 data = [d[1] for d in graph.nodes[nd]['ext']]
@@ -175,7 +176,8 @@ class StrategyGraph():
                 graph.nodes[nd]['gmm'] = gmm
             for nd_i, nd_j in graph.edges():
                 if nd_j == 'Goal':
-                    print("==",nd_i, nd_j, "==")
+                    # train goal gaussian model
+                    print("==",nd_i, nd_j, end=' ')
                     data = [d[0] for d in graph.nodes[nd_j]['ext']]
                     if len(data) < 2:
                         continue
@@ -185,7 +187,7 @@ class StrategyGraph():
                     )
                     gmm.fit(data)
                     graph.nodes[nd_j]['model'] = gmm
-                    print('GMM')
+                    print('GM model', end=' ')
                 else:
                     print("==",nd_i, nd_j)
                     data = graph.nodes[nd_j]['ext']
@@ -200,10 +202,12 @@ class StrategyGraph():
     
                     kernel = DotProduct() + WhiteKernel()
 
-                    # Create the GPR model
+                    # train the GPR model
                     gpr = GaussianProcessRegressor(kernel=kernel, random_state=0).fit(x, y)
                     graph.nodes[nd_j]['model'] = gpr
                     print('GPR', end=' ')
+
+                    # train the GMM model
                     data = [d[1] for d in graph.nodes[nd_j]['ext']]
                     if len(data) < 2:
                         continue
@@ -213,7 +217,7 @@ class StrategyGraph():
                     )
                     gmm.fit(data)
                     graph.nodes[nd_j]['gmm'] = gmm
-                    print('GMM')
+                    print('GMM', end=' ')
                     # gmm = mixture.GaussianMixture(n_components=1, covariance_type='full')
                     # gmm.fit(data)
                     # print(gmm.means_, gmm.covariances_)
@@ -226,6 +230,7 @@ class StrategyGraph():
                     #     mu, std = norm.fit(data_points)
                     #     print(mu, std)
                     #     graph.nodes[nd_j]['ext'] = (mu, std)
+                print()
         for i, g in enumerate(self.full_placement_graphs):
             self.fpg_gmm_list[i] = [nd for nd in g.nodes() if 'gmm' in g.nodes[nd]]
             if not self.is_fpg_gmm_built[i] and self.fpg_gmm_list:

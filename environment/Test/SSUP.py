@@ -38,7 +38,7 @@ def run(args):
 
 def SSUP(args):
     get_prior = args.get_prior
-    gaussian_policies = {'obj'+str(i+1):random_init_policy(*normalize_pos(get_prior(obj_dict))) for i in range(3)}
+    gaussian_policies = {'obj'+str(i+1):random_init_policy(*normalize_pos(get_prior(obj_dict, tp.toolNames))) for i in range(3)}
     policy_rewards = {i:[] for i in gaussian_policies.keys()}
     epsilon = args.eps
     epsilon_decay_rate = args.eps_decay_rate

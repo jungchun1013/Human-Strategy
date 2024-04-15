@@ -1,13 +1,12 @@
 from random import choice, randint, random, choices
 from datetime import datetime
-import numpy as np
-from copy import deepcopy
-import pymunk as pm
 import pygame as pg
 from pyGameWorld import PGWorld, ToolPicker, loadFromDict
 from pyGameWorld.viewer import *
 from pyGameWorld.jsrun import *
 from pyGameWorld.helpers import *
+import numpy as np
+from copy import deepcopy
 
 ##############################################
 #
@@ -51,14 +50,12 @@ def print_stats(trial_stats):
     for i in range(2,7):
         print(str(5*i)+':', len([str(5*j) for j in trial_stats if j <5*i])/len(trial_stats))
 
-def get_prior_SSUP(tp, movable_objects, normalize=False): # NOTE - add tp
+def get_prior_SSUP(tp, movable_objects): # NOTE - add tp
     obj = choice(movable_objects)
     BB = objectBoundingBox(tp.objects[obj])
     x = randint(BB[0][0]-20,BB[1][0]+20)
     range_y = choices([(0,BB[0][1]), (BB[1][1],600)], weights=[BB[0][1]-0, 600-BB[1][1]], k=1)[0]
     y = randint(range_y[0],range_y[1])
-    if normalize:
-        return normalize_pos((x,y))
     return (x,y)
 
 def get_prior_catapult(obj_dict):
@@ -76,7 +73,7 @@ def get_prior_catapult(obj_dict):
 
     return (x,y)
 
-def calculate_reward(tp, path_dict):
+def calculate_reward(tp, path_dict, sample_obj):
     if not path_dict:
         return 0
     reward = -1
@@ -123,14 +120,6 @@ def is_sublist(larger_list, sublist):
 
     # No match found
     return False
-
-def standardize_collisions(collisions):
-    for i, c in enumerate(collisions):
-        o1, o2, ts, te, ci = c
-        if isinstance(ci[0], pm.Vec2d):
-            ci[0] = [ci[0].x, ci[0].y]
-        collisions[i] = [o1, o2, ts, te, ci]
-    return collisions
 
 class ExtrinsicSampler():
     def __init__(self, btr, path_dict):
