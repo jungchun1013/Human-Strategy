@@ -11,11 +11,42 @@ from pyGameWorld.helpers import *
 
 ##############################################
 #
-# Algorithm
+# Experiment setup
 #
 ##############################################
 
+def setup_experiment_dir(args):
+    # NOTE - generate experiment dir
+    exptime_str = args.experiment_time.strftime("%y%m%d_%H%M%S")
+    date = exptime_str[:6]
+    time = exptime_str[7:]
+    args.exp_name = '_'.join([time, args.tnm, args.algorithm])
+    args.main_dir_name = os.path.join('data', date, args.exp_name)
+    os.makedirs(args.main_dir_name)
 
+def setup_task_args(args, tnm=None):
+    if not tnm:
+        tnm = args.tnm
+    with open(args.json_dir + tnm + '.json','r') as f:
+        args.btr0 = json.load(f)
+    args.tp0 = ToolPicker(args.btr0)
+    args.movable_obj_dict = {i:j for i, j in args.tp0.objects.items()
+                        if j.color in [(255, 0, 0, 255), (0, 0, 255, 255)]
+    }
+    args.movable_objects = list(args.movable_obj_dict)
+    args.tool_objects = list(args.tp0.toolNames)
+    path_dict0, _, _ = args.tp0.observeStatePath()
+    args.dist0 = min(args.tp0.world.distanceToGoalContainer((path_dict0[obj][i][:2])) 
+        for obj in path_dict0 for i in range(len(path_dict0[obj])) 
+        if args.tp0.objects[obj].color==(255, 0, 0, 255))
+    args.ext_sampler = ExtrinsicSampler(args.btr0, path_dict0)
+
+
+##############################################
+#
+# Algorithm
+#
+##############################################
 
 ##############################################
 
@@ -248,3 +279,12 @@ class ExtrinsicSampler():
 def node_match(node1, node2):
     print(node1, node2)
     return node1 == node2
+
+def load_strategy_graph(strategy_graph, file_name='strategy_graph.pkl'):
+    with open('strategy_graph.pkl', 'rb') as f:
+        strategy_graph = pickle.load(f)
+    return strategy_graph
+def save_strategy_graph(strategy_graph, file_name='strategy_graph.pkl'):
+    with open(file_name, 'wb') as f:
+        pickle.dump(strategy_graph, f)
+    return strategy_graph

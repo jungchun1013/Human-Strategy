@@ -17,6 +17,7 @@ from pyGameWorld.jsrun import pyGetCollisionsAddForces
 import pymunk as pm
 from pyGameWorld.helpers import centroidForPoly
 from src.strategy import StrategyGraph, merge_graphs
+from src.utils import setup_experiment_dir, setup_task_args
 from src.utils import ExtrinsicSampler, get_prior_SSUP
 from src.utils import draw_path, calculate_reward, set_prior_type, normalize_pos, draw_samples
 from src.utils import calculate_weights, standardize_collisions, draw_gp_samples, draw_gradient_samples
@@ -232,6 +233,64 @@ def sample_from_strategy_graph(args, strategy_graph, idx=0):
 
 #############################################################
 #                                                           #
+# ANCHOR - Main building strategy graph method              #
+#                                                           #
+#############################################################
+
+def build_strategy_graph(strat_graph=None):
+    if strat_graph:
+        strategy_graph = strat_graph
+    else:
+        strategy_graph = StrategyGraph()
+    sim_count = 0
+    while sim_count < args.num_trials: # loop based on number of sim in PE
+        args.btr = deepcopy(args.btr0)
+        args.tp = ToolPicker(args.btr0)
+        success = False
+        # SECTION - sample from noisy PE
+        while not success:
+            # sample extrinsics from gaussian model in SG
+            can_sample_from_gm = any(i
+                for i in strategy_graph.fpg_gmm_list)
+            if can_sample_from_gm and random() < 0.2:
+                sample_type = 'gm'
+                sample_obj, sample_ext = sample_from_gm(args, strategy_graph)
+                path_info = simulate_from_gm(
+                    args,
+                    sample_obj,
+                    sample_ext,
+                    noisy=args.noisy
+                )
+            else:
+                # sample_type = sample_exttype(args, strategy_graph)
+                sample_type = 'tool'
+                sample_obj, sample_ext, ext_info, path_info = sample_ext_by_type(
+                    args,
+                    sample_type,
+                    strategy_graph,
+                )
+            path_dict, collisions, success = path_info
+            if collisions:
+                collisions = standardize_collisions(collisions)
+            # logging.info('Sample: %s %s', sample_obj, sample_type)
+            if success:
+                sim_count += 1
+                args.sim_count = sim_count
+                logging.info('Noisy Success: %d, %s %s',
+                    sim_count, sample_obj, sample_type)
+                graph = strategy_graph.build_graph(args, sample_obj, sample_ext, path_info)
+                strategy_graph.set_placement_graph(args, graph, sample_obj)
+
+        # !SECTION
+        if  sim_count % 5 == 0:
+            strategy_graph.merge_graph(args)
+            strategy_graph.train(args)
+    return strategy_graph
+    # !SECTION - test GM
+
+
+#############################################################
+#                                                           #
 # ANCHOR - human strategy approachs                         #
 #                                                           #
 #############################################################
@@ -242,7 +301,7 @@ def generalization_test():
         args.tnm = tnm
         logging.info('Start experiment %s', tnm)
         setup_task_args(tnm)
-        strategy_graph = strategy_graph_method()
+        strategy_graph = build_strategy_graph()
         strategy_graphs.append(strategy_graph)
     
     with open('strategy_graph.pkl', 'wb') as f:
@@ -393,10 +452,9 @@ def random_tool(args):
                 logging.info('Success')
                 args.trial_stats.append([action_count, sim_count])
 
-def SSUP():
+def SSUP(gaussian_policies):
     tp = args.tp0
     get_prior = args.get_prior
-    gaussian_policies = initialize_policy(300, 300, 50)
     epsilon = args.eps
     epsilon_decay_rate = args.eps_decay_rate
     action_count = 0
@@ -602,193 +660,6 @@ def test_GM(strategy_graph):
     if not success:
         logging.info('GM out of max attempt: %d %d %d', action_count, sim_count, sample_count)
 
-def test_GPR_SSUP(strategy_graph):
-    sample_obj, sample_pos = sample_from_strategy_graph(args, strategy_graph)
-    gaussian_policies = initialize_policy(sample_pos[0], sample_pos[1], 50)
-    success = False
-    action_count = 0
-    sim_count = 0
-    sample_count = 0
-    while not success:
-        # SECTION - Sample action
-        acting = False
-        sample_type = 'GM'
-        best_reward = -1
-        best_pos = None
-        iter_count = 0
-        if random() < args.eps:
-            # NOTE - sample from prior
-            sample_type = 'prior'
-            sample_obj = choice(list(args.tp0.toolNames))
-            sample_pos = args.get_prior(args.tp0, args.movable_objects)
-            sample = [sample_pos[0], sample_pos[1], int(sample_obj[3])-1]
-            sim_count += 1
-            # Estimate noisy reward rˆ from internal model on action a
-            path_info, reward = estimate_reward(
-                args, sample_obj, sample_pos, noisy=True
-            )
-        else:
-            # Sample from policy (at most sample 100 times)
-            sample = gaussian_policies.action()
-            sample_obj = 'obj'+str(sample[2]+1)
-            sample_pos = list(sample[0:2])
-            rewards = []
-            for i in range(args.num_sim):
-                # Estimate noisy reward rˆ from internal model on action a
-                path_info, reward = estimate_reward(
-                    args, sample_obj, sample_pos, noisy=True
-                )
-                rewards.append(reward)
-            reward = np.mean(rewards)
-            iter_count += 1
-        logging.info('Simulation %d %d %d: %s %s (%d, %d), %s, %f',
-            action_count, sim_count, sample_count, sample_obj, sample_type, sample_pos[0], sample_pos[1], success, reward)
-        # best action
-        if reward > best_reward:
-            best_reward = reward
-            best_pos = sample_pos
-        # try_action = reward > args.attempt_threshold
-        if reward > args.attempt_threshold:
-            acting = True
-        elif iter_count >= args.num_iter:
-            acting = True
-            reward = best_reward
-            sample = best_pos
-            # reset
-            best_reward = -1
-            best_pos = None
-            iter_count = 0
-        sim_count += 1
-
-        # !SECTION
-        success = False
-        if acting:
-            # Observe r from environment on action a.
-            path_info, reward = estimate_reward(
-                args, sample_obj, sample_pos, noisy=False
-            )
-            path_dict, collisions, success = path_info
-            # epsilon *= epsilon_decay_rate
-            action_count += 1
-            # If successful, exit.
-            logging.info('Attempt %d %d %d: %s %s (%d, %d), %f',
-            action_count, sim_count, sample_count, sample_obj, sample_type, sample_pos[0], sample_pos[1], reward)
-            print(gaussian_policies)
-            if success:
-                logging.info("Success! %d %d", action_count, sim_count)
-                img_name = os.path.join(args.dir_name,
-                    'plot_final.png'
-                )
-                plot_policies(args, gaussian_policies, sample_pos, int(sample_obj[3])-1, img_name)
-
-                args.trial_stats.append([action_count, sim_count, sample_count])
-                break
-            # Simulate rˆ assuming other two tool choices.
-            # Update policy based on all three estimates and actions.
-            for tool in args.tp0.toolNames: 
-                CF_sample = [sample[0], sample[1], int(tool[3])-1]
-                if tool == sample_obj: 
-                    CF_reward = reward
-                else:
-                    path_dict, collisions, success_, _ = args.tp0.runStatePath(
-                        toolname=tool,
-                        position=sample_pos,
-                        noisy=True
-                    )
-                    CF_reward = calculate_reward(args, args.tp0, path_dict)
-                gaussian_policies.update([CF_sample], [CF_reward], learning_rate=args.lr)
-            img_name = os.path.join(args.dir_name,
-                    'plot'+str(sim_count)+'.png'
-                )
-            plot_policies(args, gaussian_policies, sample_pos, int(sample_obj[3])-1, img_name)
-        else:
-            # Update policy using policy gradient
-            gaussian_policies.update([sample], [reward], learning_rate=args.lr)
-        
-        if action_count >= args.max_attempts or sim_count >= args.max_simulations:
-            logging.info("Out of max attempt! %d %d", action_count, sim_count)
-            args.trial_stats.append([action_count, sim_count, sample_count])
-            break
-    return args.trial_stats
-
-def strategy_graph_method(strat_graph=None):
-    if strat_graph:
-        strategy_graph = strat_graph
-    else:
-        strategy_graph = StrategyGraph()
-    sim_count = 0
-    while sim_count < args.num_trials: # loop based on number of sim in PE
-        args.btr = deepcopy(args.btr0)
-        args.tp = ToolPicker(args.btr0)
-        success = False
-        # SECTION - sample from noisy PE
-        while not success:
-            # sample extrinsics from gaussian model in SG
-            can_sample_from_gm = any(i
-                for i in strategy_graph.fpg_gmm_list)
-            if can_sample_from_gm and random() < 0.2:
-                sample_type = 'gm'
-                sample_obj, sample_ext = sample_from_gm(args, strategy_graph)
-                path_info = simulate_from_gm(
-                    args,
-                    sample_obj,
-                    sample_ext,
-                    noisy=args.noisy
-                )
-            else:
-                # sample_type = sample_exttype(args, strategy_graph)
-                sample_type = 'tool'
-                sample_obj, sample_ext, ext_info, path_info = sample_ext_by_type(
-                    args,
-                    sample_type,
-                    strategy_graph,
-                )
-            path_dict, collisions, success = path_info
-            if collisions:
-                collisions = standardize_collisions(collisions)
-            # logging.info('Sample: %s %s', sample_obj, sample_type)
-            if success:
-                sim_count += 1
-                args.sim_count = sim_count
-                logging.info('Noisy Success: %d, %s %s',
-                    sim_count, sample_obj, sample_type)
-                graph = strategy_graph.build_graph(args, sample_obj, sample_ext, path_info)
-                strategy_graph.set_placement_graph(args, graph, sample_obj)
-
-        # !SECTION
-        if  sim_count % 5 == 0:
-            strategy_graph.merge_graph(args)
-            strategy_graph.train(args)
-    return strategy_graph
-    # !SECTION - test GM
-
-def setup_experiment_dir():
-    # NOTE - generate experiment dir
-    exptime_str = args.experiment_time.strftime("%y%m%d_%H%M%S")
-    date = exptime_str[:6]
-    time = exptime_str[7:]
-    args.exp_name = '_'.join([time, args.tnm, args.algorithm])
-    args.main_dir_name = os.path.join('data', date, args.exp_name)
-    os.makedirs(args.main_dir_name)
-
-def setup_task_args(tnm=None):
-    if not tnm:
-        tnm = args.tnm
-    with open(args.json_dir + tnm + '.json','r') as f:
-        args.btr0 = json.load(f)
-    args.tp0 = ToolPicker(args.btr0)
-    args.movable_obj_dict = {i:j for i, j in args.tp0.objects.items()
-                        if j.color in [(255, 0, 0, 255), (0, 0, 255, 255)]
-    }
-    args.movable_objects = list(args.movable_obj_dict)
-    args.tool_objects = list(args.tp0.toolNames)
-    path_dict0, _, _ = args.tp0.observeStatePath()
-    args.dist0 = min(args.tp0.world.distanceToGoalContainer((path_dict0[obj][i][:2])) 
-        for obj in path_dict0 for i in range(len(path_dict0[obj])) 
-        if args.tp0.objects[obj].color==(255, 0, 0, 255))
-    args.ext_sampler = ExtrinsicSampler(args.btr0, path_dict0)
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run SSUP')
 
@@ -836,9 +707,9 @@ if __name__ == "__main__":
     args.get_prior = set_prior_type(args.algorithm)
     args.trial_stats = []
     setup_experiment_dir()
+    setup_task_args()
     for i in range(args.num_experiment):
-        # NOTE - generate experiment dir
-        # NOTE - set up logging
+        # NOTE - set up logging configuration
         trial_name = str(i).zfill(3)
         args.dir_name = os.path.join(args.main_dir_name, trial_name)
         os.makedirs(args.dir_name)
@@ -854,25 +725,32 @@ if __name__ == "__main__":
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.INFO)
         logging.getLogger().addHandler(console_handler)
+        # NOTE - log args
         for arg in vars(args):
             logging.info('%20s %-s', arg, args.__dict__[arg])
-        # NOTE - Start experiment
+        # NOTE - Start experiments
         if args.algorithm == 'SSUP':
-            SSUP()
+            gaussian_policies = initialize_policy(300, 300, 50)
+            SSUP(gaussian_policies)
         elif args.algorithm == 'GPR_SSUP':
-            setup_task_args()
-            # strategy_graph = strategy_graph_method()
-            # with open('strategy_graph.pkl', 'wb') as f:
-            #     pickle.dump(strategy_graph, f)
-            with open('strategy_graph.pkl', 'rb') as f:
-                strategy_graph = pickle.load(f)
-            setup_task_args('Catapult_3')
-            test_GPR_SSUP(strategy_graph)
+            strategy_graphs = []
+            for tmn in ['Catapult', 'Catapult_3']:
+                setup_task_args(tmn)
+                strategy_graph = build_strategy_graph()
+                strategy_graphs.append(strategy_graph)
+            strategy_graph = merge_graphs(args, strategy_graphs)
+
+            logging.info('Start experiment %s', tnm)
+            tnm = 'Catapult_2'
+            setup_task_args(tmn)
+            # GPR
+            sample_obj, sample_pos = sample_from_strategy_graph(args, strategy_graph)
+            gaussian_policies = initialize_policy(sample_pos[0], sample_pos[1], 50)
+            SSUP(gaussian_policies)
         elif args.algorithm == 'random':
             random_tool()
         elif args.algorithm == 'GPR':
-            setup_task_args()
-            strategy_graph = strategy_graph_method()
+            strategy_graph = build_strategy_graph()
             with open('strategy_graph.pkl', 'wb') as f:
                 pickle.dump(strategy_graph, f)
             # with open('strategy_graph.pkl', 'rb') as f:
@@ -882,23 +760,18 @@ if __name__ == "__main__":
             test_GM(strategy_graph)
         elif args.algorithm == 'GPR2':
             setup_task_args()
-            # strategy_graph = strategy_graph_method()
-            # tnm = 'Catapult_3'
-            # setup_task_args(tnm)
-            # strategy_graph1 = strategy_graph_method()
-            # strategy_graphs = [strategy_graph, strategy_graph1]
-            # with open('strategy_graphs03.pkl', 'wb') as f:
-            #     pickle.dump(strategy_graphs, f)
-            with open('strategy_graphs.pkl', 'rb') as f:
-                strategy_graphs = pickle.load(f)
+            strategy_graphs = []
+            for tmn in ['Catapult', 'Catapult_3']:
+                setup_task_args(tmn)
+                strategy_graph = build_strategy_graph()
+                strategy_graphs.append(strategy_graph)
             strategy_graph = merge_graphs(args, strategy_graphs)
-
-            tnm = 'Catapult_2'
             logging.info('Start experiment %s', tnm)
+            tnm = 'Catapult_2'
             setup_task_args(tnm)
             test_GPR(strategy_graph)
-        elif args.algorithm == 'oursSSUP':
-            strategy_graph = strategy_graph_method()
+        elif args.algorithm == 'ours_SSUP':
+            strategy_graph = build_strategy_graph()
         elif args.algorithm == 'gen':
             generalization_test()
         else:
