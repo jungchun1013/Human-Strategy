@@ -19,9 +19,100 @@ from pyGameWorld.helpers import *
 
 ##############################################
 
-def generate_experiment_id():
-    current_time = datetime.now()
-    return current_time.strftime("%y%m%d_%H%M%S")
+def draw_gradient_samples(tp, samples, img_name):
+    pg.display.set_mode((10,10))
+    worlddict = tp._worlddict
+    sc = drawWorldWithTools(tp, worlddict=worlddict)
+    colors = [(255,0,0), (0,255,0), (0,0,255)]
+    for s in samples:
+        s, r = s
+        a = 0.1 if r < 0.1 else r
+        x, y = s[0], 600-s[1]
+        color = (255, 255-int(a*255), 255-int(a*255))
+        # vx, vy = s[3]/5, s[4]/5
+        pg.draw.circle(sc, color, [x, y], 5)
+        # pg.draw.line(sc, 'red', [x, y], [x+vx, y+vy], 2)
+    img = sc.convert_alpha()
+    pg.image.save(img, img_name)
+
+def draw_samples(tp, samples, img_name):
+    pg.display.set_mode((10,10))
+    worlddict = tp._worlddict
+    sc = drawWorldWithTools(tp, worlddict=worlddict)
+    colors = [(255,0,0), (0,255,0), (0,0,255)]
+    for s in samples:
+        x, y = s[0], 600-s[1]
+        vx, vy = s[3]/5, s[4]/5
+        pg.draw.circle(sc, 'red', [x, y], 5)
+        pg.draw.line(sc, 'red', [x, y], [x+vx, y-vy], 2)
+    img = sc.convert_alpha()
+    pg.image.save(img, img_name)        
+
+def draw_gp_samples(tp, samples, img_name, path_dict=None):
+    pg.display.set_mode((10,10))
+    worlddict = tp._worlddict
+    if path_dict:
+        sc = drawPathSingleImageWithTools(tp, path_dict)
+    else:
+        sc = drawWorldWithTools(tp, worlddict=worlddict)
+    for s in samples[0]:
+        if s is None: continue
+        x, y = s[0], 600-s[1]
+        vx, vy = s[3]/5, s[4]/5
+        pg.draw.circle(sc, 'red', [x, y], 6)
+        pg.draw.line(sc, 'red', [x, y], [x+vx, y-vy], 3)
+    for s in samples[1]:
+        if s is None: continue
+        x, y = s[0], 600-s[1]
+        vx, vy = s[3]/5, s[4]/5
+        pg.draw.circle(sc, 'green', [x, y], 5)
+        pg.draw.line(sc, 'green', [x, y], [x+vx, y-vy], 2)
+    img = sc.convert_alpha()
+    pg.image.save(img, img_name)    
+
+
+def draw_4_samples(tp, samples, img_name, path_dict=None):
+    pg.display.set_mode((10,10))
+    worlddict = tp._worlddict
+    if path_dict:
+        sc = drawPathSingleImageWithTools(tp, path_dict)
+    else:
+        sc = drawWorldWithTools(tp, worlddict=worlddict)
+    
+    color = (255, 128, 128)
+    for s in samples[0]:
+        if s is None: continue
+        x, y = s[0], 600-s[1]
+        vx, vy = s[3]/5, s[4]/5
+        pg.draw.circle(sc, color, [x, y], 5)
+        pg.draw.line(sc, color, [x, y], [x+vx, y-vy], 2)
+
+    color = (128, 255, 128)
+    for s in samples[1]:
+        if s is None: continue
+        x, y = s[0], 600-s[1]
+        vx, vy = s[3]/5, s[4]/5
+        pg.draw.circle(sc, color, [x, y], 5)
+        pg.draw.line(sc, color, [x, y], [x+vx, y-vy], 2)
+
+    color = (255, 0, 0)
+    for s in samples[2]:
+        if s is None: continue
+        x, y = s[0], 600-s[1]
+        vx, vy = s[3]/5, s[4]/5
+        pg.draw.circle(sc, color, [x, y], 3)
+        pg.draw.line(sc, color, [x, y], [x+vx, y-vy], 1)
+
+    color = (0, 255, 0)
+    for s in samples[3]:
+        if s is None: continue
+        x, y = s[0], 600-s[1]
+        vx, vy = s[3]/5, s[4]/5
+        pg.draw.circle(sc, color, [x, y], 3)
+        pg.draw.line(sc, color, [x, y], [x+vx, y-vy], 1)
+
+    img = sc.convert_alpha()
+    pg.image.save(img, img_name) 
 
 def draw_path(tp, path_dict, img_name, tool_pos=None):
     if not path_dict: return
@@ -41,10 +132,7 @@ def draw_multi_paths(world, path_set, img_name):
     pg.image.save(img, img_name)
 
 def set_prior_type(args):
-    if args.algorithm == 'SSUP':
-        return get_prior_SSUP
-    else:
-        return get_prior_catapult
+    return get_prior_SSUP
 
 def print_stats(trial_stats):
     print('5: ', len([t for t in trial_stats if t <5])/len(trial_stats))
@@ -69,26 +157,22 @@ def get_prior_catapult(obj_dict):
     y0 = obj_dict['Catapult'].getPolys()[2][2][1]
     x = randint(x0-20, x0+20) # 
     y = randint(y0+20,600)
-    # elif obj == 'Ball':
-    #     # x = randint(112-20, 200+20)
-    #     x = randint(90-20, 90+20)
-    #     y = randint(0,600)
-
     return (x,y)
 
-def calculate_reward(tp, path_dict):
+def calculate_reward(args, tp, path_dict):
     if not path_dict:
         return 0
-    reward = -1
+    dist0 = args.dist0
+    dist = 1000
     for obj in path_dict:
         if obj == 'PLACED': continue
-        if tp.objects[obj].color == (255, 0, 0, 255):
-            dist0 = tp.world.distanceToGoalContainer((path_dict[obj][0][:2]))
-            dist = tp.world.distanceToGoalContainer((path_dict[obj][-1][:2]))
-            r = 1-(dist/dist0)
-            if r > reward:
-                reward = r
-            # reward = -(dist/dist0-0.5)*2
+        for i in range(len(path_dict[obj])):
+            if tp.objects[obj].color == (255, 0, 0, 255):
+                dist_tmp = tp.world.distanceToGoalContainer((path_dict[obj][i][:2]))
+                if dist > dist_tmp:
+                    dist = dist_tmp
+                # reward = -(dist/dist0-0.5)*2
+    reward = 1-(dist/dist0)
     return reward
 
 def normalize_pos(pos):

@@ -6,8 +6,9 @@ from scipy.stats import norm
 from sklearn import mixture
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import DotProduct, WhiteKernel
-from src.utils import node_match, draw_multi_paths
+from src.utils import node_match, draw_multi_paths, draw_samples, draw_gp_samples, draw_4_samples
 import os
+from copy import deepcopy
 
 
 
@@ -20,224 +21,217 @@ class StrategyGraph():
     '''
     def __init__(self):
         self.path_graphs = []
-        self.full_placement_graphs = []
+        self.placement_graphs = []
         self.full_placement_idx = []
         self.obj_count = Counter()
         self.main_graph = nx.DiGraph()
-        self.is_fpg_gmm_built = []
-        self.is_fpg_gpr_built = []
         self.fpg_gmm_list = []
 
     def build_graph(self, args, sample_obj, init_pose, path_info):
         path_dict, collisions, success = path_info
-        succ_list = []
-        succ_list.append(sample_obj)
+        succ_list = [sample_obj]
         graph = nx.DiGraph()
         self.obj_count[sample_obj] += 1
         # add visited flag to collisions
-        collisions = [c + [False] for c in collisions]
-
+        is_col_visited = [False for _ in collisions]
+        prev_tool_ext = init_pose
+        prev_target_ext = None
+        poss = {'prev_tool':[], 'prev_target':[], 'curr_tool':[], 'curr_target':[]}
+        is_goal_end = False
         while succ_list:
             cur_nd_name = succ_list[0]
-            cur_node = "PLACED" if cur_nd_name in args.tp.toolNames else cur_nd_name
             succ_list.pop(0)
+            cur_node = "PLACED" if cur_nd_name in args.tp.toolNames else cur_nd_name
             ext_col_list = []
             if not graph.has_node(cur_nd_name):
-                init_ext = init_pose if cur_node == "PLACED" else path_dict[cur_node][0]
+                curr_target_ext = init_pose if cur_node == "PLACED" else path_dict[cur_node][0]
                 graph.add_node(
                     cur_nd_name,
-                    ext=[[None, init_ext]],
+                    ext=[[None, None, None, curr_target_ext]],
                     path=[path_dict]
                 )
-                prev_ext = init_pose
-            else:
-                prev_ext = graph.nodes[cur_nd_name]['ext'][0][0]
+                prev_tool_ext = curr_target_ext
 
-            # print(list(zip(visited, collisions)))
-            for col in [c for c in collisions if not c[-1]]:
+            # print(cur_nd_name, [int(j) for j in prev_tool_ext], '-')
+            # prev_tool_ext = graph.nodes[cur_nd_name]['ext'][-1][1]
+            prev_col_idx = 0
+
+            for idx, col in enumerate(collisions):
                 is_reverse = False
-                is_succ = False
-
                 if col[0] == cur_node:
+                    is_col_visited[idx] = True
                     succ_node = col[1]
-                    col[-1] = True
                     is_reverse = False
-                    is_succ = True
                 elif col[1] == cur_node:
-                    col[-1] = True
+                    is_col_visited[idx] = True
                     succ_node = col[0]
                     is_reverse = True
-                    is_succ = True
                 else:
-                    succ_node = None
-                    is_succ = False
-                if (is_succ and succ_node in args.available_objects
-                    and (succ_node, cur_node) not in graph.edges()):
-                    col_time = col[3] if col[3] else col[2]
+                    # the collision does not related to current node
+                    continue
+                available_objects = args.movable_objects + args.tool_objects + ['Goal']
+                is_goal_end = (succ_node == 'Goal'
+                    and cur_nd_name not in args.tp.toolNames
+                    and (args.tp.objects[cur_node].color == (255, 0, 0, 255)))
+                if succ_node not in available_objects:
+                    # collision with stable objects
+                    ext_col_list.append(succ_node)
+                elif (succ_node in available_objects and (succ_node, cur_node) not in graph.edges()) or is_goal_end:
+
+                    col_end_time = col[3] if col[3] else col[2]
+                    if succ_node != 'Goal':
+                        col_end_idx = min(
+                            int((col_end_time+0.1)*10), int((col[2]+0.1)*10)+20
+                        ) # collision after 0.5s
+                    else:
+                        col_end_idx = int((col_end_time+0.1)*10)
                     col_end_idx = min(
-                        int((col_time+0.1)*10), len(path_dict[succ_node])-1
+                        col_end_idx, len(path_dict[cur_node])-1
                     )
+                    # prev_tool_ext = path_dict[cur_node][prev_col_idx]
+                    curr_tool_ext = path_dict[cur_node][col_end_idx]
+                    if succ_node != 'Goal':
+                        prev_target_ext = path_dict[succ_node][prev_col_idx]
+                        curr_target_ext = path_dict[succ_node][col_end_idx]
+                        succ_list.append(succ_node)
+                    else:
+                        # use curr_tool_ext as goal position
+                        prev_target_ext = path_dict[cur_node][col_end_idx][0:2] + [0,0,0]
+                        curr_target_ext = path_dict[cur_node][col_end_idx][0:2] + [0,0,0]
                     graph.add_node(
                         succ_node,
-                        ext=[[prev_ext, path_dict[succ_node][col_end_idx]]],
+                        ext=[[prev_tool_ext, prev_target_ext, curr_tool_ext, curr_target_ext]],
                         path=[path_dict]
                     )
                     graph.add_edge(cur_nd_name, succ_node, label=ext_col_list)
                     ext_col_list = []
-                    prev_ext = path_dict[succ_node][col_end_idx]
-                    succ_list.append(succ_node)
-                elif (is_succ and succ_node == 'Goal'
-                    and (cur_nd_name not in args.tp.toolNames
-                    and args.tp.objects[cur_nd_name].color == (255, 0, 0, 255))): # red
-                    col_end_idx = min(
-                        int((col[2]+0.1)*10),
-                        len(path_dict[cur_node])-1
-                    )
-                    graph.add_node(
-                        succ_node,
-                        ext=[[path_dict[cur_node][col_end_idx], None]],
-                        path=[path_dict]
-                    )
-                    graph.add_edge(cur_nd_name, succ_node, label=ext_col_list)
-                    ext_col_list=[]
+                    # only add one edge
+                    # print(cur_nd_name, succ_node)
+                    # for i in ['prev_tool', 'prev_target', 'curr_tool', 'curr_target']:
+                    #     if poss[i][-1]:
+                    #         print(i, [int(j) for j in poss[i][-1]], end=' ')
+                    #     else:
+                    #         print('None', end=' ')
+                    # print()
+                    prev_tool_ext = curr_target_ext
+                    prev_col_idx = col_end_idx
                     break
-                elif is_succ and succ_node not in args.available_objects:
-                    ext_col_list.append(succ_node)
-
-            if "Goal" not in graph.nodes() and not succ_list:
-                if cur_nd_name == sample_obj:
-                    break
-        if "Goal" in graph.nodes():
-            if sample_obj not in args.tp.toolNames:
-                self.path_graphs.append(graph)
-            else:
-                is_isomorphic = False
-                for tg in self.full_placement_graphs:
-                    if set(graph.edges()) == set(tg.edges()):
-                        is_isomorphic = True
-                        for node in graph.nodes():
-                            tg.nodes[node]['ext'] += graph.nodes[node]['ext']
-                        break
-                if not is_isomorphic:
-                    self.full_placement_graphs.append(graph)
-                    self.full_placement_idx.append(0)
-                    self.is_fpg_gmm_built.append(False)
-                    self.is_fpg_gpr_built.append(False)
-                    self.fpg_gmm_list.append([])
-
         return graph
 
+    def set_placement_graph(self, args, graph, sample_obj):
+        if "Goal" in graph.nodes():
+            self.path_graphs.append(graph)
+            if sample_obj in args.tp0.toolNames:
+                is_isomorphic = False
+                for tg in self.placement_graphs:
+                    if set(graph.edges()) == set(tg.edges()):
+                        is_isomorphic = True
+                        # for node in graph.nodes():
+                        #     tg.nodes[node]['ext'] += graph.nodes[node]['ext']
+                        break
+                if not is_isomorphic:
+                    p_graph = deepcopy(graph)
+                    # copy for separate placement graph and path graph
+                    for node in p_graph.nodes(): # reset for update
+                        p_graph.nodes[node]['ext'] = []
+                    self.placement_graphs.append(p_graph)
+                    self.full_placement_idx.append(0)
+                    self.fpg_gmm_list.append([])
+                
     def merge_graph(self, args):
-        for idx, graph in (zip(self.full_placement_idx, self.full_placement_graphs)):
+        for idx, graph in (zip(self.full_placement_idx, self.placement_graphs)):
+            c = 0
             for path in self.path_graphs[idx:]:
-                if all(edge in graph.edges() for edge in path.edges()):
+                if set(path.edges()).issubset(set(graph.edges())):
                     graph = self.add_strategy(graph, path)
-            graph_idx = self.full_placement_graphs.index(graph)
+                    c += 1
+            graph_idx = self.placement_graphs.index(graph)
             self.full_placement_idx[graph_idx] = len(self.path_graphs)
-            # log
-            print(graph.edges())
-            for node in graph.nodes():
-                if len([d for d in graph.nodes[node]['ext'] if d[0] is not None]) > 0:
-                    data = graph.nodes[node]['ext']
-                    tool_data, _ = zip(*[d for d in data if d[0] is not None])
-                    print(node, len(graph.nodes[node]['ext']), len(tool_data))
-                else:
-                    print(node, len(graph.nodes[node]['ext']), '*')
-            print('-')
-            path_set = [path for node in graph.nodes() 
-                for path in graph.nodes[node]['path']
-                if node != 'Goal'
-            ]
-            node_str = '-'.join(graph.nodes())+'.png'
-            img_name = os.path.join(args.dir_name, node_str)
-            draw_multi_paths(args.btr0['world'], path_set, img_name)
 
     def add_strategy(self, graph, path):
         for node in path.nodes():
             graph.nodes[node]['ext'] += path.nodes[node]['ext']
             graph.nodes[node]['path'] += path.nodes[node]['path']
-
         return graph
     
 
-    def train(self):
-        for graph in self.full_placement_graphs:
+    def train(self, args):
+        print('Training')
+        for graph in self.placement_graphs:
             # Train tools (no pred) gaussian model
-            for nd in [nd for nd in graph.nodes() if not list(graph.predecessors(nd))]:
-                print("======",nd,"======")
-                data = [d[1] for d in graph.nodes[nd]['ext']]
+            # print(graph.edges())
+            for nd in graph.nodes():
+                data = [d[3] for d in graph.nodes[nd]['ext'] if d[3] is not None]
+                # print('==', nd, end=' ')
                 if len(data) < 2:
+                    print()
                     continue
+                # print('GM', len(data), end=' ')
+                img_name = os.path.join(args.dir_name,
+                    'GM_sample_'+nd+'.png'
+                )
+                draw_samples(args.tp0, data, img_name)
                 gmm = mixture.GaussianMixture(
                     n_components=1, 
                     covariance_type='full'
                 )
                 gmm.fit(data)
-                graph.nodes[nd]['gmm'] = gmm
-            for nd_i, nd_j in graph.edges():
-                if nd_j == 'Goal':
-                    # train goal gaussian model
-                    print("==",nd_i, nd_j, end=' ')
-                    data = [d[0] for d in graph.nodes[nd_j]['ext']]
-                    if len(data) < 2:
-                        continue
-                    gmm = mixture.GaussianMixture(
-                        n_components=1,
-                        covariance_type='full'
-                    )
-                    gmm.fit(data)
-                    graph.nodes[nd_j]['model'] = gmm
-                    print('GM model', end=' ')
-                else:
-                    print("==",nd_i, nd_j)
-                    data = graph.nodes[nd_j]['ext']
+                graph.nodes[nd]['GM'] = gmm
+                if nd not in args.tp0.toolNames: # the node that exclude tool object
+                    data = graph.nodes[nd]['ext']
+                    tool_data, target_data = zip(*[[d[0], d[3]+d[1]] for d in data if d[0] is not None])
 
-                    tool_data, target_data = zip(*[d for d in data if d[0] is not None])
-                    tool_data = list(tool_data)
-                    target_data = list(target_data)
-                    if len(tool_data) < 2:
+                    y = deepcopy(list(tool_data))
+                    x = deepcopy(list(target_data))
+                    img_name = os.path.join(args.dir_name,
+                        'GP_sample_'+nd+'.png'
+                    )
+                    data_ = zip(*[d for d in data if d[0] is not None])
+
+                    draw_4_samples(args.tp0, list(data_), os.path.join(args.dir_name, 'sample4_'+nd+'.png'))
+                    for i in range(len(tool_data)):
+                        y[i][0] -= x[i][0] # prev_tool - cur_target
+                        y[i][1] -= x[i][1]
+                        # x[i] = x[i][2:5]
+                        if any(pred in args.tp0.toolNames for pred in graph.predecessors(nd)):
+                            x[i] = x[i][2:5]
+                        else:
+                            x[i] = x[i][2:]
+                    if len(x) < 2:
+                        print()
                         continue
-                    x = target_data
-                    y = tool_data
-    
+                    # print('GPR', len(x), len(x[0]), end=' ')
                     kernel = DotProduct() + WhiteKernel()
-
-                    # train the GPR model
-                    gpr = GaussianProcessRegressor(kernel=kernel, random_state=0).fit(x, y)
-                    graph.nodes[nd_j]['model'] = gpr
-                    print('GPR', end=' ')
-
-                    # train the GMM model
-                    data = [d[1] for d in graph.nodes[nd_j]['ext']]
-                    if len(data) < 2:
-                        continue
-                    gmm = mixture.GaussianMixture(
-                        n_components=1, 
-                        covariance_type='full'
-                    )
-                    gmm.fit(data)
-                    graph.nodes[nd_j]['gmm'] = gmm
-                    print('GMM', end=' ')
-                    # gmm = mixture.GaussianMixture(n_components=1, covariance_type='full')
-                    # gmm.fit(data)
-                    # print(gmm.means_, gmm.covariances_)
-
-                    # data = [d[1] for d in graph.nodes[nd_j]['ext']]
-                    # data = zip(*data)
-                    # print(data)
-                    # for data_points in data:
-                    #     # Calculate the mean and standard deviation of the data points
-                    #     mu, std = norm.fit(data_points)
-                    #     print(mu, std)
-                    #     graph.nodes[nd_j]['ext'] = (mu, std)
-                print()
-        for i, g in enumerate(self.full_placement_graphs):
-            self.fpg_gmm_list[i] = [nd for nd in g.nodes() if 'gmm' in g.nodes[nd]]
-            if not self.is_fpg_gmm_built[i] and self.fpg_gmm_list:
-                self.is_fpg_gmm_built[i] = True
-            self.is_fpg_gpr_built[i] = all(
-                'model' in g.nodes[nd] for nd in g.nodes() 
-                if not list(g.predecessors(nd))
-            )
+                    gpr = GaussianProcessRegressor(kernel=kernel).fit(x, y)
+                    graph.nodes[nd]['model'] = gpr
+                # print()
 
                 
+        for i, g in enumerate(self.placement_graphs):
+            self.fpg_gmm_list[i] = [nd for nd in g.nodes() if 'GM' in g.nodes[nd] and nd != 'Goal']
+
+                
+def merge_graphs(args, strategy_graphs):
+    merge_SG = StrategyGraph()
+    all_path = [sg.path_graphs for sg in strategy_graphs]
+    all_path = [path for paths in all_path for path in paths]
+    for graph in all_path:
+        start_nd = [nd for nd in graph.nodes() if not list(graph.predecessors(nd))][0]
+        merge_SG.set_placement_graph(args, graph, start_nd)
+        # if start_nd not in args.tp.toolNames:
+        #     merge_SG.path_graphs.append(graph)
+        # else:
+        #     is_isomorphic = False
+        #     for tg in merge_SG.placement_graphs:
+        #         if set(graph.edges()) == set(tg.edges()):
+        #             is_isomorphic = True
+        #             for node in graph.nodes():
+        #                 tg.nodes[node]['ext'] += graph.nodes[node]['ext']
+        #             break
+        #     if not is_isomorphic:
+        #         merge_SG.placement_graphs.append(graph)
+        #         merge_SG.full_placement_idx.append(0)
+        #         merge_SG.fpg_gmm_list.append([])
+    merge_SG.merge_graph(args)
+    merge_SG.train(args)
+    return merge_SG

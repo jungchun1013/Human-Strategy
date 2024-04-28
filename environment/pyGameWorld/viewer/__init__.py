@@ -331,13 +331,14 @@ def drawPathSingleImageWithTools(tp, path, pathSize=3, lighten_amt=.5, worlddict
     # Draw the end tools
     for onm, o in world.objects.items():
         if not o.isStatic():
-            if len(path[onm])==2:
-                o.setPos(path[onm][0][-1])
-                o.setRot(path[onm][1][-1])
-            else:
-                o.setPos(path[onm][-1][0:2])
-                o.setRot(path[onm][-1][2])
-            _draw_obj(o, sc, makept)
+            for i in range(0, len(path[onm]), 5):
+                if len(path[onm])==2:
+                    o.setPos(path[onm][0][i])
+                    o.setRot(path[onm][1][i])
+                else:
+                    o.setPos(path[onm][i][0:2])
+                    o.setRot(path[onm][i][2])
+                _draw_obj(o, sc, makept, lighten_amt=lighten_amt)
 
     return sc
 

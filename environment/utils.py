@@ -39,8 +39,8 @@ def draw_multi_paths(world, path_set, img_name):
     img = sc.convert_alpha()
     pg.image.save(img, img_name)
 
-def set_prior_type(args):
-    if args.algorithm == 'SSUP':
+def set_prior_type(algorithm):
+    if algorithm == 'SSUP':
         return get_prior_SSUP
     else:
         return get_prior_catapult
