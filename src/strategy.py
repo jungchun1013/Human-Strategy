@@ -6,9 +6,11 @@ from scipy.stats import norm
 from sklearn import mixture
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import DotProduct, WhiteKernel
-from src.utils import node_match, draw_multi_paths, draw_samples, draw_gp_samples, draw_4_samples
+from src.utils import node_match, draw_multi_paths, draw_samples, draw_samples, draw_samples
 import os
 from copy import deepcopy
+from gplearn.genetic import SymbolicRegressor
+from pyGameWorld.helpers import centroidForPoly
 
 
 
@@ -35,6 +37,8 @@ class StrategyGraph():
         # add visited flag to collisions
         is_col_visited = [False for _ in collisions]
         prev_tool_ext = init_pose
+        orig_tool_ext = init_pose
+        orig_target_ext = init_pose
         prev_target_ext = None
         poss = {'prev_tool':[], 'prev_target':[], 'curr_tool':[], 'curr_target':[]}
         is_goal_end = False
@@ -46,14 +50,13 @@ class StrategyGraph():
             if not graph.has_node(cur_nd_name):
                 curr_target_ext = init_pose if cur_node == "PLACED" else path_dict[cur_node][0]
                 graph.add_node(
-                    cur_nd_name,
-                    ext=[[None, None, None, curr_target_ext]],
+                    cur_node,
+                    ext=[[None, None, None, curr_target_ext, None, orig_target_ext]],
                     path=[path_dict]
                 )
                 prev_tool_ext = curr_target_ext
+                graph.nodes[cur_node]['tools'] = [cur_nd_name]
 
-            # print(cur_nd_name, [int(j) for j in prev_tool_ext], '-')
-            # prev_tool_ext = graph.nodes[cur_nd_name]['ext'][-1][1]
             prev_col_idx = 0
 
             for idx, col in enumerate(collisions):
@@ -71,12 +74,13 @@ class StrategyGraph():
                     continue
                 available_objects = args.movable_objects + args.tool_objects + ['Goal']
                 is_goal_end = (succ_node == 'Goal'
-                    and cur_nd_name not in args.tp.toolNames
+                    and cur_node != 'PLACED'
                     and (args.tp.objects[cur_node].color == (255, 0, 0, 255)))
+                has_path = succ_node in graph and cur_node in graph and nx.has_path(graph, succ_node, cur_node)
                 if succ_node not in available_objects:
                     # collision with stable objects
                     ext_col_list.append(succ_node)
-                elif (succ_node in available_objects and (succ_node, cur_node) not in graph.edges()) or is_goal_end:
+                elif succ_node in available_objects and not has_path and (succ_node != 'Goal' or is_goal_end):
 
                     col_end_time = col[3] if col[3] else col[2]
                     if succ_node != 'Goal':
@@ -93,17 +97,20 @@ class StrategyGraph():
                     if succ_node != 'Goal':
                         prev_target_ext = path_dict[succ_node][prev_col_idx]
                         curr_target_ext = path_dict[succ_node][col_end_idx]
+                        orig_target_ext = path_dict[succ_node][0]
                         succ_list.append(succ_node)
                     else:
                         # use curr_tool_ext as goal position
                         prev_target_ext = path_dict[cur_node][col_end_idx][0:2] + [0,0,0]
                         curr_target_ext = path_dict[cur_node][col_end_idx][0:2] + [0,0,0]
+                        orig_target_ext = centroidForPoly(args.btr0['world']['objects']['Goal']['points'])
                     graph.add_node(
                         succ_node,
-                        ext=[[prev_tool_ext, prev_target_ext, curr_tool_ext, curr_target_ext]],
+                        ext=[[prev_tool_ext, prev_target_ext, curr_tool_ext, curr_target_ext, orig_tool_ext, orig_target_ext]],
                         path=[path_dict]
                     )
-                    graph.add_edge(cur_nd_name, succ_node, label=ext_col_list)
+                    # NOTE - set name as cur_nd PLACE and mark tool in attr
+                    graph.add_edge(cur_node, succ_node, label=ext_col_list)
                     ext_col_list = []
                     # only add one edge
                     # print(cur_nd_name, succ_node)
@@ -115,28 +122,29 @@ class StrategyGraph():
                     # print()
                     prev_tool_ext = curr_target_ext
                     prev_col_idx = col_end_idx
-                    break
+                    orig_tool_ext = orig_target_ext
+                    break 
+        print('-', graph.edges())
         return graph
 
     def set_placement_graph(self, args, graph, sample_obj):
-        if "Goal" in graph.nodes():
-            self.path_graphs.append(graph)
-            if sample_obj in args.tp0.toolNames:
-                is_isomorphic = False
-                for tg in self.placement_graphs:
-                    if set(graph.edges()) == set(tg.edges()):
-                        is_isomorphic = True
-                        # for node in graph.nodes():
-                        #     tg.nodes[node]['ext'] += graph.nodes[node]['ext']
-                        break
-                if not is_isomorphic:
-                    p_graph = deepcopy(graph)
-                    # copy for separate placement graph and path graph
-                    for node in p_graph.nodes(): # reset for update
-                        p_graph.nodes[node]['ext'] = []
-                    self.placement_graphs.append(p_graph)
-                    self.full_placement_idx.append(0)
-                    self.fpg_gmm_list.append([])
+        self.path_graphs.append(graph)
+        if sample_obj in list(args.tp0.toolNames) + ['PLACED']:
+            is_isomorphic = False
+            for tg in self.placement_graphs:
+                if set(graph.edges()) == set(tg.edges()):
+                    is_isomorphic = True
+                    # for node in graph.nodes():
+                    #     tg.nodes[node]['ext'] += graph.nodes[node]['ext']
+                    break
+            if not is_isomorphic:
+                p_graph = deepcopy(graph)
+                # copy for separate placement graph and path graph
+                for node in p_graph.nodes(): # reset for update
+                    p_graph.nodes[node]['ext'] = []
+                self.placement_graphs.append(p_graph)
+                self.full_placement_idx.append(0)
+                self.fpg_gmm_list.append([])
                 
     def merge_graph(self, args):
         for idx, graph in (zip(self.full_placement_idx, self.placement_graphs)):
@@ -152,61 +160,128 @@ class StrategyGraph():
         for node in path.nodes():
             graph.nodes[node]['ext'] += path.nodes[node]['ext']
             graph.nodes[node]['path'] += path.nodes[node]['path']
+            if node == 'PLACE':
+                graph.nodes[node]['tools'] += path.nodes[node]['tools']
         return graph
     
-
     def train(self, args):
         print('Training')
         for graph in self.placement_graphs:
             # Train tools (no pred) gaussian model
-            # print(graph.edges())
+            print(graph.edges())
             for nd in graph.nodes():
                 data = [d[3] for d in graph.nodes[nd]['ext'] if d[3] is not None]
-                # print('==', nd, end=' ')
                 if len(data) < 2:
-                    print()
                     continue
-                # print('GM', len(data), end=' ')
                 img_name = os.path.join(args.dir_name,
                     'GM_sample_'+nd+'.png'
                 )
-                draw_samples(args.tp0, data, img_name)
+                draw_samples(args.tp0, [data], 'single', img_name)
                 gmm = mixture.GaussianMixture(
                     n_components=1, 
                     covariance_type='full'
                 )
                 gmm.fit(data)
                 graph.nodes[nd]['GM'] = gmm
-                if nd not in args.tp0.toolNames: # the node that exclude tool object
-                    data = graph.nodes[nd]['ext']
+            for nd_i, nd_j in graph.edges():
+                if nd_j not in args.tp0.toolNames: # the node that exclude tool object
+                    data = graph.nodes[nd_j]['ext']
+                    tool_data, target_data = zip(*[[d[0], d[3]+d[1]+list(d[4][0:2])+list(d[5][0:2])] for d in data if d[0] is not None])
+
+                    y = deepcopy(list(tool_data))
+                    x = deepcopy(list(target_data))
+                    img_name = os.path.join(args.dir_name,
+                        'GP_sample_'+nd_i+nd_j+'.png'
+                    )
+                    img_data = zip(*[d for d in data if d[0] is not None])
+                    if nd_i in args.tp0.toolNames:
+                        feature_names = ['cur_targ_r', 'cur_targ_vx', 'cur_targ_vy']
+                    else:
+                        feature_names = ['cur_targ_r', 'cur_targ_vx', 'cur_targ_vy', 'prev_target_x', 'prev_target_y', 'prev_target_r', 'prev_target_vx', 'prev_target_vy']
+
+                    draw_samples(args.tp0, list(img_data), 'compare_tool_target', os.path.join(args.dir_name, 'train4_'+nd_i+nd_j+'.png'))
+                    for i in range(len(tool_data)):
+                        y[i][0] -= x[i][0] # prev_tool - cur_target
+                        y[i][1] -= x[i][1]
+                        # if any(pred in args.tp0.toolNames for pred in graph.predecessors(nd)):
+                        if nd_i == 'PLACED':
+                            # x[i][12:] target init pos
+                            x[i] = x[i][2:5]+x[i][12:]
+                        else:
+                            x[i] = x[i][2:]
+                    if len(x) < 2:
+                        continue
+                    # print('GPR', len(x), len(x[0]), end=' ')
+                    kernel = DotProduct() + WhiteKernel()
+                    gpr = GaussianProcessRegressor(kernel=kernel, random_state=None).fit(x, y)
+                    # est_gp = SymbolicRegressor(population_size=5000,
+                    #        generations=20, stopping_criteria=-1,
+                    #        p_crossover=0.7, p_subtree_mutation=0.1,
+                    #        p_hoist_mutation=0.05, p_point_mutation=0.1,
+                    #        max_samples=0.9, verbose=1,
+                    #        parsimony_coefficient=0.05,
+                    #        feature_names = feature_names,
+                    #        random_state=0)
+                    
+                    # est_gps = []
+                    # for y_ in zip(*y):
+                    #     est_gp.fit(x, y_)
+                    #     print(est_gp._program)
+                    #     est_gps.append(est_gp)
+                    graph.edges[(nd_i, nd_j)]['model'] = gpr
+                # print()
+
+        for i, g in enumerate(self.placement_graphs):
+            self.fpg_gmm_list[i] = [nd for nd in g.nodes() if 'GM' in g.nodes[nd] and nd != 'Goal']
+
+    def train2(self, args):
+        print('Training')
+        for graph in self.placement_graphs:
+            # Train tools (no pred) gaussian model
+            print(graph.edges())
+            for nd in graph.nodes():
+                data = [d[3] for d in graph.nodes[nd]['ext'] if d[3] is not None]
+                if len(data) < 2:
+                    continue
+                img_name = os.path.join(args.dir_name,
+                    'GM_sample_'+nd+'.png'
+                )
+                draw_samples(args.tp0, [data], 'single', img_name)
+                gmm = mixture.GaussianMixture(
+                    n_components=1, 
+                    covariance_type='full'
+                )
+                gmm.fit(data)
+                graph.nodes[nd]['GM'] = gmm
+            for nd_i, nd_j in graph.edges():
+                if nd_j not in args.tp0.toolNames: # the node that exclude tool object
+                    data = graph.nodes[nd_j]['ext']
                     tool_data, target_data = zip(*[[d[0], d[3]+d[1]] for d in data if d[0] is not None])
 
                     y = deepcopy(list(tool_data))
                     x = deepcopy(list(target_data))
                     img_name = os.path.join(args.dir_name,
-                        'GP_sample_'+nd+'.png'
+                        'GP_sample_'+nd_i+nd_j+'.png'
                     )
-                    data_ = zip(*[d for d in data if d[0] is not None])
+                    img_data = zip(*[d for d in data if d[0] is not None])
 
-                    draw_4_samples(args.tp0, list(data_), os.path.join(args.dir_name, 'sample4_'+nd+'.png'))
+                    draw_samples(args.tp0, list(img_data), 'compare_tool_target', os.path.join(args.dir_name, 'train4_'+nd_i+nd_j+'.png'))
                     for i in range(len(tool_data)):
                         y[i][0] -= x[i][0] # prev_tool - cur_target
                         y[i][1] -= x[i][1]
-                        # x[i] = x[i][2:5]
-                        if any(pred in args.tp0.toolNames for pred in graph.predecessors(nd)):
+                        # if any(pred in args.tp0.toolNames for pred in graph.predecessors(nd)):
+                        if nd_i in args.tp0.toolNames:
                             x[i] = x[i][2:5]
                         else:
                             x[i] = x[i][2:]
                     if len(x) < 2:
-                        print()
                         continue
                     # print('GPR', len(x), len(x[0]), end=' ')
                     kernel = DotProduct() + WhiteKernel()
-                    gpr = GaussianProcessRegressor(kernel=kernel).fit(x, y)
-                    graph.nodes[nd]['model'] = gpr
+                    gpr = GaussianProcessRegressor(kernel=kernel, random_state=None).fit(x, y)
+                    graph.edges[(nd_i, nd_j)]['model'] = gpr
                 # print()
 
-                
         for i, g in enumerate(self.placement_graphs):
             self.fpg_gmm_list[i] = [nd for nd in g.nodes() if 'GM' in g.nodes[nd] and nd != 'Goal']
 
@@ -218,20 +293,64 @@ def merge_graphs(args, strategy_graphs):
     for graph in all_path:
         start_nd = [nd for nd in graph.nodes() if not list(graph.predecessors(nd))][0]
         merge_SG.set_placement_graph(args, graph, start_nd)
-        # if start_nd not in args.tp.toolNames:
-        #     merge_SG.path_graphs.append(graph)
-        # else:
-        #     is_isomorphic = False
-        #     for tg in merge_SG.placement_graphs:
-        #         if set(graph.edges()) == set(tg.edges()):
-        #             is_isomorphic = True
-        #             for node in graph.nodes():
-        #                 tg.nodes[node]['ext'] += graph.nodes[node]['ext']
-        #             break
-        #     if not is_isomorphic:
-        #         merge_SG.placement_graphs.append(graph)
-        #         merge_SG.full_placement_idx.append(0)
-        #         merge_SG.fpg_gmm_list.append([])
     merge_SG.merge_graph(args)
     merge_SG.train(args)
     return merge_SG
+
+def get_obj_type(obj_name):
+    # TODO - complete related object type
+    if 'Ball' in obj_name:
+        u_type = 'Ball'
+    elif 'PLACED' in obj_name:
+        u_type = 'Tool'
+    elif 'obj' in obj_name:
+        u_type = 'Tool'
+    elif 'Goal' in obj_name:
+        u_type = 'Goal'
+    else:
+        u_type = 'Poly'
+    return u_type
+
+def merge_mechanisms(args, strategy_graphs):
+    mechanism_list = {}
+    for SG in strategy_graphs:
+        for graph in SG.placement_graphs:
+            for u, v in graph.edges():
+                u_type = get_obj_type(u)
+                v_type = get_obj_type(v)
+                mechanism = {
+                    'info': [[args.tnm, u, v]],
+                    'tool_ext': graph.nodes[u]['ext'],
+                    'target_ext': graph.nodes[v]['ext'],
+                    'tool_path': graph.nodes[u]['path'],
+                    'target_path': graph.nodes[v]['path'],
+                }
+                if u == 'Place':
+                    mechanism['tools'] = graph.nodes[u]['tools']
+
+                if (u_type, v_type) not in mechanism_list:
+                    mechanism_list[(u_type, v_type)] = mechanism
+                else:
+                    for key in mechanism:
+                        mechanism_list[(u_type, v_type)][key] += mechanism[key]
+    return mechanism_list
+
+def train_mechanism(args, mechanism_list):
+    print('Training mechanism')
+    for mech, mech_info in mechanism_list.items():
+        u, v = mech
+        data = mech_info['target_ext']
+        tool_data, target_data = zip(*[[d[0], d[3]+d[1]] for d in data if d[0] is not None])
+        y = deepcopy(list(tool_data))
+        x = deepcopy(list(target_data))
+        for i in range(len(tool_data)):
+            y[i][0] -= x[i][0] # prev_tool - cur_target
+            y[i][1] -= x[i][1]
+            x[i] = x[i][2:5] if u == 'Tool' else x[i][2:]
+        if len(x) < 2:
+            continue
+        # print('GPR', len(x), len(x[0]), end=' ')
+        kernel = DotProduct() + WhiteKernel()
+        gpr = GaussianProcessRegressor(kernel=kernel).fit(x, y)
+        mechanism_list[mech]['model'] = gpr
+    return mechanism_list

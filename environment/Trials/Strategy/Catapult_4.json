@@ -7,8 +7,8 @@
         "_RightWall": {"type": "Poly", "color": "black", "density": 0, "vertices": [[599, -1], [599, 601], [601, 601], [601, -1]]}, 
         "_TopWall": {"type": "Poly", "color": "black", "density": 0, "vertices": [[-1, 599], [-1, 601], [601, 601], [601, 599]]}, 
         "Strut": {"type": "Poly", "color": "black", "density": 0, "vertices": [[330, 0], [330, 122], [350, 122], [350, 0]]}, 
-        "Cradle": {"type": "Poly", "color": "black", "density": 0, "vertices": [[200, 0], [200, 120], [230, 120], [230, 0]]}, 
-        "Goal": {"type": "Container", "color": "black", "density": 0, "points": [[500, 170], [530, 72], [598, 72], [598, 170]], "width": 5, "innerColor": "green", "outerColor": "black"}, 
-        "Catapult": {"type": "Compound", "color": "blue", "density": 1, "polys": [[[250, 122], [250, 137], [265, 137], [265, 122]], [[250, 137], [250, 162], [265, 162], [265, 137]], [[265, 122], [265, 137], [460, 137], [460, 122]]]}, 
-        "Ball": {"type": "Ball", "color": "red", "density": 1, "position": [300, 132], "radius": 15}}, 
+        "Cradle": {"type": "Poly", "color": "black", "density": 0, "vertices": [[410, 0], [410, 120], [450, 120], [450, 0]]}, 
+        "Goal": {"type": "Container", "color": "black", "density": 0, "points": [[2, 170], [2, 72], [70, 72], [100, 170]], "width": 5, "innerColor": "green", "outerColor": "black"}, 
+        "Catapult": {"type": "Compound", "color": "blue", "density": 1, "polys": [[[460, 122], [460, 137], [475, 137], [475, 122]], [[460, 137], [460, 162], [475, 162], [475, 137]], [[235, 122], [235, 137], [460, 137], [460, 122]]]}, 
+        "Ball": {"type": "Ball", "color": "red", "density": 1, "position": [430, 152], "radius": 15}}, 
         "blocks": {}, "constraints": {}, "gcond": {"type": "SpecificInGoal", "goal": "Goal", "obj": "Ball", "duration": 1}}, "tools": {"obj1": [[[-30, 20], [30, 20], [0, -20]]], "obj2": [[[-36, -36], [-36, 36], [36, 36], [36, -36]]], "obj3": [[[-40, -10], [-40, 10], [40, 10], [40, -10]]]}, "toolNames": ["obj1", "obj2", "obj3"], "sucText": "Get the red ball into the green goal"}

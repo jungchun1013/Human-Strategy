@@ -127,7 +127,8 @@ def plot_policies(args, policy, pos, tool, filename):
     ellipses = draw_policy(policy)
     for e in ellipses:
         ax.add_patch(e)
-    plt.plot(pos[0], pos[1], colors[tool]+'o')
+    if pos is not None:
+        plt.plot(pos[0], pos[1], colors[tool]+'o')
     for j in range(3):
         mu_x = policy.params[f"obj{j+1}_mu1"].detach().numpy()
         mu_y = policy.params[f"obj{j+1}_mu2"].detach().numpy()

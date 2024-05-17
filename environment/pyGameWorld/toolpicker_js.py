@@ -278,7 +278,7 @@ class ToolPicker(object):
         tool = self._tools[toolname]
         # Make sure the tool can be placed
         if self.checkPlacementCollide(toolname, position):
-            return None, None, -1
+            return None, None, None, -1
         if stopOnGoal:
             wd = self._worlddict
         else:

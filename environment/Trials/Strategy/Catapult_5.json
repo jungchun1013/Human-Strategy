@@ -10,5 +10,5 @@
         "Cradle": {"type": "Poly", "color": "black", "density": 0, "vertices": [[420, 0], [420, 70], [440, 70], [440, 0]]}, 
         "Goal": {"type": "Container", "color": "black", "density": 0, "points": [[2, 110], [2, 2], [70, 2], [100, 110]], "width": 5, "innerColor": "green", "outerColor": "black"}, 
         "Catapult": {"type": "Compound", "color": "blue", "density": 1, "polys": [[[445, 72], [445, 87], [460, 87], [460, 72]], [[445, 87], [445, 132], [460, 132], [460, 87]], [[175, 72], [175, 87], [445, 87], [445, 72]]]}, 
-        "Ball": {"type": "Ball", "color": "red", "density": 1, "position": [400, 112], "radius": 15}}, 
+        "Ball": {"type": "Ball", "color": "red", "density": 1, "position": [400, 102], "radius": 15}}, 
         "blocks": {}, "constraints": {}, "gcond": {"type": "SpecificInGoal", "goal": "Goal", "obj": "Ball", "duration": 1}}, "tools": {"obj1": [[[-30, 20], [30, 20], [0, -20]]], "obj2": [[[-36, -36], [-36, 36], [36, 36], [36, -36]]], "obj3": [[[-40, -10], [-40, 10], [40, 10], [40, -10]]]}, "toolNames": ["obj1", "obj2", "obj3"], "sucText": "Get the red ball into the green goal"}

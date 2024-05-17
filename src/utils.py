@@ -1,5 +1,8 @@
 from random import choice, randint, random, choices
 from datetime import datetime
+import os
+import json
+import pickle
 import numpy as np
 from copy import deepcopy
 import pymunk as pm
@@ -26,6 +29,9 @@ def setup_experiment_dir(args):
 
 def setup_task_args(args, tnm=None):
     if not tnm:
+        args.noisy = not args.deterministic
+        args.get_prior = set_prior_type(args.algorithm)
+        # args.trial_stats = []
         tnm = args.tnm
     with open(args.json_dir + tnm + '.json','r') as f:
         args.btr0 = json.load(f)
@@ -33,6 +39,7 @@ def setup_task_args(args, tnm=None):
     args.movable_obj_dict = {i:j for i, j in args.tp0.objects.items()
                         if j.color in [(255, 0, 0, 255), (0, 0, 255, 255)]
     }
+    args.sequence_sample_poss = {}
     args.movable_objects = list(args.movable_obj_dict)
     args.tool_objects = list(args.tp0.toolNames)
     path_dict0, _, _ = args.tp0.observeStatePath()
@@ -40,7 +47,94 @@ def setup_task_args(args, tnm=None):
         for obj in path_dict0 for i in range(len(path_dict0[obj])) 
         if args.tp0.objects[obj].color==(255, 0, 0, 255))
     args.ext_sampler = ExtrinsicSampler(args.btr0, path_dict0)
+##############################################
+#
+# Sampler
+#
+##############################################
 
+def extrinsics_sampler(args, sample_type, strategy):
+    weights = [ math.e**(-strategy.obj_count[m]*args.eps)
+        for m in args.movable_objects
+    ]
+    sample_obj = choices(args.movable_objects, weights=weights, k=1)[0]
+    if sample_type == 'pos':
+        btr = args.ext_sampler.sample_pos(sample_obj)
+    elif sample_type == 'vel': # set velocity
+        btr = args.ext_sampler.sample_vel(sample_obj)
+    elif sample_type == 'ang':
+        btr = args.ext_sampler.sample_ang(sample_obj)
+    tp = ToolPicker(btr)
+    path_dict, collisions, success, _ = tp.runStatePath(noisy=args.noisy)
+    sample_ext = [*tp.objects[sample_obj].position, tp.objects[sample_obj].rotation, *tp.objects[sample_obj].velocity]  
+    ext_info = sample_ext
+    path_info = path_dict, collisions, success
+    return sample_obj, sample_ext, ext_info, path_info
+
+def tool_sampler(args):
+    tp = args.tp
+    sample_obj = choice(args.tool_objects)
+    sample_pos = get_prior_SSUP(args.tp0, args.movable_objects)
+    path_dict, collisions, success, t = tp.runStatePath(
+        sample_obj,
+        sample_pos,
+        noisy=args.noisy
+    )
+    sample_ext = [sample_pos[0], sample_pos[1], 0, 0, 0]
+    ext_info = sample_ext
+    path_info = path_dict, collisions, success
+    return sample_obj, sample_ext, ext_info, path_info
+
+def kick_sampler(args, strategy):
+    weights = [ math.e**(-strategy.obj_count[m]*args.eps)
+        for m in args.movable_objects
+    ]
+    sample_obj = choices(args.movable_objects, weights=weights, k=1)[0]
+    rand_rad = random()*2*np.pi
+    random_scale = randint(1,50) * 10000
+    impulse = pm.Vec2d(np.cos(rand_rad)*random_scale,  np.sin(rand_rad)*random_scale)
+    bb = objectBoundingBox(args.tp.objects[sample_obj])
+    sample_pos = pm.Vec2d( \
+        randint(bb[0][0],bb[1][0])-(bb[1][0]-bb[0][0])/2-bb[0][0], \
+        randint(bb[0][1],bb[1][1])-(bb[1][1]-bb[0][1])/2-bb[0][1])
+    force_times = {
+        0.0:[[sample_obj, impulse, sample_pos]],
+        0.1:[[sample_obj, impulse, sample_pos]],
+        0.2:[[sample_obj, impulse, sample_pos]]
+    }
+    # FIXME - consider noisy env
+    path_dict, collisions, success, _ = pyGetCollisionsAddForces(
+        args.tp.world,
+        force_times=force_times
+    )
+    sample_ext = path_dict[sample_obj][2]
+    path_info = path_dict, collisions, success
+    return sample_obj, sample_ext, force_times, path_info
+
+def sample_exttype(args, strategy_graph):
+    '''
+        do sampling
+    '''
+    success = False
+    obj_weight = sum(math.e**(-strategy_graph.obj_count[m]*args.eps) for m in args.movable_objects)
+    tool_weight = sum(math.e**(-strategy_graph.obj_count[m]*args.eps) for m in args.tool_objects)
+    ext_weights = [0, obj_weight, 0, obj_weight, tool_weight]
+    ext_weights = [w/sum(ext_weights) for w in ext_weights]
+    sample_ext = choices(
+        ['pos', 'vel', 'ang', 'kick', 'tool'],
+        weights=ext_weights,
+        k=1)[0]
+    return sample_ext
+
+def sample_ext_by_type(args, sample_type, strategy):
+    if sample_type in ['pos', 'vel', 'ang']: # fixed pos, smaple from path
+        result = extrinsics_sampler(args, sample_type, strategy)
+    elif sample_type == 'kick':
+        result = kick_sampler(args, strategy)
+    elif sample_type == 'tool':
+        result = tool_sampler(args)
+    # result: sample_obj, sample_ext, ext_info, path_info
+    return result
 
 ##############################################
 #
@@ -66,90 +160,34 @@ def draw_gradient_samples(tp, samples, img_name):
     img = sc.convert_alpha()
     pg.image.save(img, img_name)
 
-def draw_samples(tp, samples, img_name):
+def draw_samples(tp, samples, task, img_name):
     pg.display.set_mode((10,10))
     worlddict = tp._worlddict
     sc = drawWorldWithTools(tp, worlddict=worlddict)
-    colors = [(255,0,0), (0,255,0), (0,0,255)]
-    for s in samples:
-        x, y = s[0], 600-s[1]
-        vx, vy = s[3]/5, s[4]/5
-        pg.draw.circle(sc, 'red', [x, y], 5)
-        pg.draw.line(sc, 'red', [x, y], [x+vx, y-vy], 2)
-    img = sc.convert_alpha()
-    pg.image.save(img, img_name)        
-
-def draw_gp_samples(tp, samples, img_name, path_dict=None):
-    pg.display.set_mode((10,10))
-    worlddict = tp._worlddict
-    if path_dict:
-        sc = drawPathSingleImageWithTools(tp, path_dict)
+    if task == 'compare_tool_target':
+        colors = [(255, 128, 128), (128, 255, 128), (255, 0, 0), (0, 255, 0)]
+    elif task == 'tool_target':
+        colors = [(255, 0, 0), (0, 255, 0)]
+    elif task == 'single':
+        colors = [(255, 0, 0)]
     else:
-        sc = drawWorldWithTools(tp, worlddict=worlddict)
-    for s in samples[0]:
-        if s is None: continue
-        x, y = s[0], 600-s[1]
-        vx, vy = s[3]/5, s[4]/5
-        pg.draw.circle(sc, 'red', [x, y], 6)
-        pg.draw.line(sc, 'red', [x, y], [x+vx, y-vy], 3)
-    for s in samples[1]:
-        if s is None: continue
-        x, y = s[0], 600-s[1]
-        vx, vy = s[3]/5, s[4]/5
-        pg.draw.circle(sc, 'green', [x, y], 5)
-        pg.draw.line(sc, 'green', [x, y], [x+vx, y-vy], 2)
-    img = sc.convert_alpha()
-    pg.image.save(img, img_name)    
+        gradient = 255//len(samples)
+        colors = [(255-i*gradient, 0, i*gradient) for i in range(len(samples)-1)] + [(0,255,0)]
+    for col, sample in zip(colors, samples):
+        for s in sample:
+            x, y = s[0], 600-s[1]
+            vx, vy = s[3]/5, s[4]/5
+            pg.draw.circle(sc, col, [x, y], 5)
+            pg.draw.line(sc, col, [x, y], [x+vx, y-vy], 2)
+        img = sc.convert_alpha()
+        pg.image.save(img, img_name)
 
-
-def draw_4_samples(tp, samples, img_name, path_dict=None):
-    pg.display.set_mode((10,10))
-    worlddict = tp._worlddict
-    if path_dict:
-        sc = drawPathSingleImageWithTools(tp, path_dict)
-    else:
-        sc = drawWorldWithTools(tp, worlddict=worlddict)
-    
-    color = (255, 128, 128)
-    for s in samples[0]:
-        if s is None: continue
-        x, y = s[0], 600-s[1]
-        vx, vy = s[3]/5, s[4]/5
-        pg.draw.circle(sc, color, [x, y], 5)
-        pg.draw.line(sc, color, [x, y], [x+vx, y-vy], 2)
-
-    color = (128, 255, 128)
-    for s in samples[1]:
-        if s is None: continue
-        x, y = s[0], 600-s[1]
-        vx, vy = s[3]/5, s[4]/5
-        pg.draw.circle(sc, color, [x, y], 5)
-        pg.draw.line(sc, color, [x, y], [x+vx, y-vy], 2)
-
-    color = (255, 0, 0)
-    for s in samples[2]:
-        if s is None: continue
-        x, y = s[0], 600-s[1]
-        vx, vy = s[3]/5, s[4]/5
-        pg.draw.circle(sc, color, [x, y], 3)
-        pg.draw.line(sc, color, [x, y], [x+vx, y-vy], 1)
-
-    color = (0, 255, 0)
-    for s in samples[3]:
-        if s is None: continue
-        x, y = s[0], 600-s[1]
-        vx, vy = s[3]/5, s[4]/5
-        pg.draw.circle(sc, color, [x, y], 3)
-        pg.draw.line(sc, color, [x, y], [x+vx, y-vy], 1)
-
-    img = sc.convert_alpha()
-    pg.image.save(img, img_name) 
 
 def draw_path(tp, path_dict, img_name, tool_pos=None):
     if not path_dict: return
     pg.display.set_mode((10,10))
     sc = drawPathSingleImageWithTools(tp, path_dict)
-    if tool_pos:
+    if tool_pos is not None:
         tool_pos = [tool_pos[0], 600-tool_pos[1]]
         pg.draw.circle(sc, (0,0,255), tool_pos, 5)
     img = sc.convert_alpha()
@@ -281,10 +319,147 @@ def node_match(node1, node2):
     return node1 == node2
 
 def load_strategy_graph(strategy_graph, file_name='strategy_graph.pkl'):
-    with open('strategy_graph.pkl', 'rb') as f:
+    with open(file_name, 'rb') as f:
         strategy_graph = pickle.load(f)
     return strategy_graph
 def save_strategy_graph(strategy_graph, file_name='strategy_graph.pkl'):
     with open(file_name, 'wb') as f:
         pickle.dump(strategy_graph, f)
     return strategy_graph
+
+# def generalization_test():
+#     strat_graphs = []
+#     for tnm in ['Launch_v2', 'Catapult_5', 'Launch_A', 'Catapult']:
+#         args.tnm = tnm
+#         logging.info('Start experiment %s', tnm)
+#         setup_task_args(args, tnm)
+#         strategy_graph = build_strategy_graph()
+#         strat_graphs.append(strategy_graph)
+
+#     with open('strategy_graph.pkl', 'wb') as f:
+#         pickle.dump(strat_graphs, f)
+#     # with open('strategy_graph.pkl', 'rb') as f:
+#     #     strat_graphs = pickle.load(f)
+#     # test on CatapultAlt obj -> lever -> cataball -> keyball -> goal
+#     args.tnm = 'CatapultAlt'
+#     with open(args.json_dir + args.tnm + '.json','r') as f:
+#         args.btr0 = json.load(f)
+#     args.tp0 = ToolPicker(args.btr0)
+#     action_count = 0
+#     sim_count = 0
+#     sample_count = 0
+#     args.trial_stats.append({'GPR': [], 'GM': []})
+#     success = False
+#     while True:
+#         g = choice(strat_graphs)
+#         g = g.placement_graphs[0]
+#         cur_nd = 'Goal'
+#         # gmm = g.nodes[cur_nd]['GM']
+#         # sample_poss = gmm.sample(n_samples=3)
+#         # sample_poss = sample_poss[0]
+#         pre_nd = None
+#         # NOTE
+#         sample_poss = centroidForPoly(args.btr0['world']['objects']['Goal']['points'])
+#         sample_poss = [[
+#             sample_poss[0]+random()*40-20,
+#             sample_poss[1]+random()*40-20,
+#             0,
+#             random()*100-50,
+#             random()*100-50]]
+#         img_name = os.path.join(args.dir_name,
+#             'Gen_test_'+cur_nd+'.png'
+#         )
+#         print(cur_nd, int(sample_poss[0][0]), int(sample_poss[0][1]))
+#         cur_nd = 'Ball'
+#         g = [g for g in strat_graphs[0].placement_graphs if ('Ball2', 'Ball') in g.edges()][0]
+#         gpr = g.edges[(pre_nd, cur_nd)]['model']
+#         obj_pos = sample_poss[0]
+#         # NOTE
+#         samples = gpr.sample_y([obj_pos[2:]], n_samples=3)
+#         arr = np.array(samples)
+#         sample_poss = [list(item)
+#             for sublist in np.transpose(arr, (0, 2, 1))
+#             for item in sublist]
+#         img_poss = [[obj_pos[0]+s[0],obj_pos[1]+s[1],s[2],s[3],s[4]] for s in sample_poss]
+#         img_name = os.path.join(args.dir_name,
+#             'Gen_test_'+cur_nd+'1.png'
+#         )
+#         draw_gp_samples(args.tp0, [img_poss, [obj_pos]], 'tool_target', img_name)
+#         cur_nd = 'Ball'
+#         g = [g for g in strat_graphs[1].placement_graphs if ('Catapult', 'Ball') in g.edges()][0]
+#         gpr = g.edges[(pre_nd, cur_nd)]['model']
+#         sample_pos = list(np.array(sample_poss).mean(axis=0))
+#         print(cur_nd, sample_pos)
+
+#         obj_pos = [obj_pos[0] + sample_pos[0], obj_pos[1] + sample_pos[1],
+#             sample_pos[2], sample_pos[3], sample_pos[4]]
+#         # NOTE
+#         samples = gpr.sample_y([obj_pos[2:]], n_samples=3)
+#         arr = np.array(samples)
+#         sample_poss = [list(item)
+#             for sublist in np.transpose(arr, (0, 2, 1))
+#             for item in sublist]
+#         img_poss = [[obj_pos[0] + s[0], obj_pos[1] + s[1], s[2], s[3], s[4]]
+#             for s in sample_poss]
+#         img_name = os.path.join(args.dir_name,
+#             'Gen_test_'+cur_nd+'x.png'
+#         )
+#         draw_gp_samples(args.tp0, [img_poss, [obj_pos]], img_name)
+#         sample_pos = list(np.array(sample_poss).mean(axis=0))
+#         obj_pos = [obj_pos[0] + sample_pos[0], obj_pos[1] + sample_pos[1], 
+#             sample_pos[2], sample_pos[3], sample_pos[4]]
+#         cur_nd = 'Catapult'
+#         g = [g for g in strat_graphs[1].placement_graphs if ('obj2', 'Catapult') in g.edges()][0]
+#         gpr = g.edges[(pre_nd, cur_nd)]['model']
+#         # NOTE
+#         samples = gpr.sample_y([obj_pos[2:]], n_samples=3)
+#         arr = np.array(samples)
+#         sample_poss = [list(item)
+#             for sublist in np.transpose(arr, (0, 2, 1))
+#             for item in sublist]
+#         sample_pos = sample_poss[0]
+#         print(cur_nd, sample_pos)
+#         img_poss = [[obj_pos[0]+s[0],obj_pos[1]+s[1],s[2],s[3],s[4]] for s in sample_poss]
+#         img_name = os.path.join(args.dir_name,
+#             'Gen_test_'+cur_nd+'.png'
+#         )
+#         draw_gp_samples(args.tp0, [img_poss, [sample_poss[0]]], img_name)
+#         obj_pos = [obj_pos[0] + sample_poss[0][0], obj_pos[1] + sample_poss[0][1]]
+#         sample_pos = obj_pos
+#         # sample_obj = choice(list(args.tp0.toolNames))
+#         sample_obj = 'obj2'
+#         path_info, reward = estimate_reward(
+#             sample_obj,
+#             obj_pos,
+#             noisy=True
+#         )
+#         path_dict, _, success = path_info
+#         sample_count += 1
+#         if success is not None:
+#             sim_count += 1
+#         logging.info('GPR Sample: %s (%d %d)', sample_obj, sample_pos[0], sample_pos[1])
+#         if success is not None and reward > args.attempt_threshold:
+#             action_count += 1
+#             logging.info('GPR Simulate: %d %d %d, %s (%d %d) %s %f',
+#                 action_count, sim_count, sample_count, sample_obj,
+#                 sample_pos[0], sample_pos[1], success, reward)
+#             img_name = os.path.join(args.dir_name,
+#                 'sample_from_GPR_'+str(sim_count)+'_'+args.tnm+'.png'
+#             )
+#             draw_path(args.tp0, path_dict, img_name, sample_pos)
+#             path_info, reward = estimate_reward(
+#                 sample_obj,
+#                 sample_pos,
+#                 noisy=False
+#             )
+#             path_dict, collisions, success = path_info
+#             logging.info('GPR Attempt: %d %d %d (%d, %d) %s %f',
+#                 action_count, sim_count, sample_count,
+#                 sample_pos[0], sample_pos[1], success, reward)
+#             if success:
+#                 args.trial_stats[-1]['GPR'].append([action_count, sim_count, sample_count,
+#                     [sample_pos[0], sample_pos[1]]])
+#                 break
+#         if sim_count >= 100:
+#             logging.info('GPR out of max attempt: %d %d %d', action_count, sim_count, sample_count)
+#             break
