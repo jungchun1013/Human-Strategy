@@ -588,83 +588,6 @@ def SSUP(policies):
             break
     return args.trial_stats
 
-
-def test_GPR(strategy_structure, sample_method=sample_from_strategy_graph):
-    action_count = 0
-    sim_count = 0
-    while action_count < args.max_attempts:
-        sample_obj, sample_pos = sample_method(strategy_structure, action_count)
-        if not sample_obj:
-            continue
-        sample_pos = list(sample_pos[0:2])
-        # NOTE - same as SSUP -> simulate in PE before attempt
-        path_info, _ = estimate_reward(
-            sample_obj,
-            sample_pos,
-            noisy=False
-        )
-        success = path_info[2]
-        action_count += 1
-        logging.info('GPR Attempt: %d %d (%d, %d)', action_count, sim_count,
-            sample_pos[0], sample_pos[1])
-        if success:
-            logging.info('GPR Attempt Success: %d %d (%d, %d)', action_count, sim_count,
-                sample_pos[0], sample_pos[1])
-            if sample_method == sample_from_strategy_graph:
-                method = 'strat'
-            else:
-                method = 'mech'
-            args.trial_stats[method].append([action_count, sim_count,
-                [sample_pos[0], sample_pos[1]]])
-            break
-    img_name = os.path.join(args.dir_name,
-        'GP_seq.png'
-    )
-    img_poss = [v for v in args.sequence_sample_poss.values()]
-    draw_samples(args.tp0, img_poss, '', img_name)
-    if not success:
-        logging.info('GPR out of max attempt: %d %d', action_count, sim_count)
-
-def test_GM(strat_graph):
-    action_count = 0
-    sim_count = 0
-    while action_count < args.max_attempts and sim_count < args.max_simulations:
-        nd_list = [ (nd, g) for g in strat_graph.placement_graphs
-            for nd in g.nodes() if 'GM' in g.nodes[nd] and nd in args.tp.toolNames]
-        node, graph = choice(nd_list)
-        sample_ext = graph.nodes[node]['GM'].sample()[0][0]
-        sample_obj = node
-        logging.info('GM Sample: %s (%d %d)', sample_obj, sample_ext[0], sample_ext[1])
-        path_info, reward = estimate_reward(
-            sample_obj,
-            list(sample_ext[0:2]),
-            noisy=True
-        )
-        path_dict, _, success = path_info
-        if success is not None:
-            sim_count += 1
-        if reward > args.attempt_threshold:
-            logging.info('GM Simulate: %d %d', action_count, sim_count)
-            sample_pos = list(sample_ext[0:2])
-            path_dict, _, success, _ =  args.tp0.runStatePath(
-                toolname=sample_obj,
-                position=sample_pos,
-                noisy=False
-            )
-            img_name = os.path.join(args.dir_name,
-                'sample_from_GM_'+str(sim_count)+'_'+args.tnm+'.png'
-            )
-            draw_path(args.tp0, path_dict, img_name, sample_pos)
-            action_count += 1
-            if success:
-                logging.info('GM Attempt Success: %d %d (%d %d)',
-                    action_count, sim_count, sample_ext[0], sample_ext[1])
-                args.trial_stats[-1]["GM"].append([action_count, sim_count,
-                    [sample_ext[0], sample_ext[1]]])
-                break
-    if not success:
-        logging.info('GM out of max attempt: %d %d', action_count, sim_count)
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run SSUP')
     parser.add_argument('-a', '--algorithm',
@@ -751,7 +674,6 @@ if __name__ == "__main__":
             sample_object, sample_position = sample_from_strategy_graph(strategy_graph)
             gaussian_policies = initialize_policy(sample_position[0], sample_position[1], 50)
             SSUP(gaussian_policies)
-        elif args.algorithm == 'GPR_SSUP_CF':
         elif args.algorithm == 'GPR_SSUP_GEN':
             strategy_graphs = []
             tasks = args.task['training']
