@@ -1,0 +1,10 @@
+
+{"world":{"dims":[600,600],"bts":0.01,"gravity":200,"defaults":{"density":1,"friction":0.5,"elasticity":0.5,"color":"black","bk_color":"white"},"objects":{"_LeftWall":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[-1,-1],[-1,601],[1,601],[1,-1]]},"_BottomWall":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[-1,-1],[-1,1],[601,1],[601,-1]]},"_RightWall":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[599,-1],[599,601],[601,601],[601,-1]]},"_TopWall":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[-1,599],[-1,601],[601,601],[601,599]]},
+    "Table1":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[120,480],[120,540],[600,540],[600,480]]},
+    "Table2":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[0,360],[0,420],[480,420],[420,360]]},
+    "Table3":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[250,0],[250,300],[600,300],[600,0]]},
+    "Slope2":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[480,300],[600,420],[600,300]]},
+    "BigSlope":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[100,0], [100,150],[250,300],[250,0]]},
+    "Goal":{"type":"Container","color":"black","density":0,"friction":0.5,"elasticity":0.5,"points":[[420,360],[350,360],[350,300],[420,300]],"width":10,"innerColor":"green","outerColor":"black"},
+    "Ball1":{"type":"Ball","color":"red","density":1,"friction":0.5,"elasticity":0.5,"velocity":[0,0],"position":[70,435],"radius":15}
+    },"blocks":{"Blocker":{"color":"grey","vertices":[[120,0],[120,540],[480,540],[480,0]]}},"constraints":{},"gcond":{"type":"ManyInGoal","objlist":["Ball1"],"goal":"Goal","duration":1}},"tools":{"obj1":[[[-30,-25],[-30,25],[30,25],[30,5],[0,-25]]],"obj2":[[[-20,-20],[-20,20],[20,20],[20,-20]]],"obj3":[[[-30,-40],[-40,-40],[30,40],[40,40]]]},"toolNames":["obj1","obj2","obj3"],"sucText":"Get a red ball into the green goal"}

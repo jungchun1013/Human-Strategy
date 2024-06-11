@@ -101,7 +101,8 @@ def _draw_tool(toolverts, makept, size=[90, 90], color=(0,0,0,255)):
     return s
 
 def drawWorld(world, backgroundOnly=False, lightenPlaced=False):
-    s = pg.Surface(world.dims)
+    # add pg.SRCALPHA for transparency
+    s = pg.Surface(world.dims, pg.SRCALPHA)
     s.fill(world.bk_col)
 
     def makept(p):
@@ -133,7 +134,8 @@ def drawWorldWithTools(tp, backgroundOnly=False, worlddict=None):
         world = loadFromDict(worlddict)
     else:
         world = loadFromDict(tp._worlddict)
-    s = pg.Surface((world.dims[0] + 150, world.dims[1]))
+    # add pg.SRCALPHA for transparency
+    s = pg.Surface((world.dims[0] + 150, world.dims[1]), pg.SRCALPHA)
     s.fill(world.bk_col)
 
     def makept(p):
@@ -339,6 +341,70 @@ def drawPathSingleImageWithTools(tp, path, pathSize=3, lighten_amt=.5, worlddict
                     o.setPos(path[onm][i][0:2])
                     o.setRot(path[onm][i][2])
                 _draw_obj(o, sc, makept, lighten_amt=lighten_amt)
+
+    return sc
+
+def drawPathSingleImageWithTools2(tp, path, col_idx=[0], pathSize=3, lighten_amt=.5, worlddict=None, with_tools=False):
+    # set up the drawing
+    if worlddict is None:
+        worlddict = tp._worlddict
+    world = loadFromDict(worlddict)
+    #pg.init()
+    #sc = pg.display.set_mode(world.dims)
+    if not with_tools:
+        sc = drawWorld(world, backgroundOnly=True)#, worlddict=worlddict)
+    else:
+        sc = drawWorldWithTools(tp, backgroundOnly=True, worlddict=worlddict)
+        # sc = drawWorldWithTools(tp, backgroundOnly=False, worlddict=worlddict)
+    def makept(p):
+        return [int(i) for i in world._invert(p)]
+    # draw the paths in the background
+    for onm, o in world.objects.items():
+        if not o.isStatic():
+            if o.type == 'Container':
+                col = o.outer_color
+            else:
+                col = o.color
+            pthcol = _lighten_rgb(col, lighten_amt)
+            if len(path[onm]) == 2:
+                poss = path[onm][0]
+            else:
+                poss = [path[onm][i][0:2] for i in range(0, len(path[onm]))]
+            # for p in poss:
+            #    pg.draw.circle(sc, pthcol, makept(p), pathSize)
+            pts = _filter_unique([makept(p) for p in poss])
+
+            if len(pts) > 1:
+                steps = len(pts)
+                cols = [_lighten_rgb(col, amt=0.9*step/steps) for step in range(0, steps)]
+                for i,pt in enumerate(pts[:-1]):
+                    color = cols[i]
+                    pg.draw.line(sc, color, pt, pts[i+1], 3)
+                    # _draw_line_gradient(pt, pts[i+1], 5, col, sc)
+                # pg.draw.lines(sc, pthcol, False, pts, pathSize)
+    # Draw the initial tools, lightened
+    # for onm, o in world.objects.items():
+    #     if not o.isStatic():
+    #         _draw_obj(o, sc, makept, lighten_amt=lighten_amt)
+    # Draw the end tools
+    for onm, o in world.objects.items():
+        for idx in col_idx:
+            if not o.isStatic():
+                if len(path[onm])==2:
+                    o.setPos(path[onm][0][idx])
+                    o.setRot(path[onm][1][idx])
+                else:
+                    o.setPos(path[onm][idx][0:2])
+                    o.setRot(path[onm][idx][2])
+                _draw_obj(o, sc, makept, lighten_amt=lighten_amt)
+        if not o.isStatic():
+            if len(path[onm])==2:
+                o.setPos(path[onm][0][-1])
+                o.setRot(path[onm][1][-1])
+            else:
+                o.setPos(path[onm][-1][0:2])
+                o.setRot(path[onm][-1][2])
+            _draw_obj(o, sc, makept)
 
     return sc
 

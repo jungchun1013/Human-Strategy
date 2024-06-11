@@ -188,6 +188,9 @@ class ToolPicker(object):
     def _reset_pyworld(self):
         self._pyworld = loadFromDict(self._worlddict)
 
+    def set_worlddict(self, worlddict):
+        self._worlddict = worlddict
+
     def _get_image_array(self, worlddict, path, sample_ratio=1):
         if path is None:
             imgs = makeImageArrayNoPath(worlddict, self.maxTime/self.bts/sample_ratio)
@@ -645,12 +648,11 @@ class ToolPicker(object):
             tool = self._tools[toolname]
             if self.checkPlacementCollide(toolname, position):
                 if returnDict:
-                    return None, None, None, -1
+                    return None, None, None, -1, None
                 else:
                     return None, None, None, -1
         else:
             tool = None
-
 
         if noisy:
             ndict = {
@@ -674,9 +676,14 @@ class ToolPicker(object):
             wd = self._wdng
         if objAdjust:
             wd = updateObjects(wd, objAdjust)
-        path, col, end, t = self._ctx.call('getGWStatePathAll', wd, tool, position, maxtime, self.bts, ndict, returnDict)
-        fcol = filterCollisionEvents(col, collisionSlop)
-        r = [path, fcol, end, t]
+        if returnDict:
+            path, col, end, t, w = self._ctx.call('getGWStatePathAll', wd, tool, position, maxtime, self.bts, ndict, True)
+            fcol = filterCollisionEvents(col, collisionSlop)
+            r = [path, fcol, end, t, w]
+        else:
+            path, col, end, t = self._ctx.call('getGWStatePathAll', wd, tool, position, maxtime, self.bts, ndict, returnDict)
+            fcol = filterCollisionEvents(col, collisionSlop)
+            r = [path, fcol, end, t]
         return r
 
 

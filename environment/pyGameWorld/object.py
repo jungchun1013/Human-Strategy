@@ -225,6 +225,12 @@ class PGBall(PGObject):
         else:
             return self._cpBody.position
 
+    def getRot(self):
+        if self.isStatic():
+            return self._cpShape.body.angle
+        else:
+            return self._cpBody.angle
+
     def kick(self, impulse, position, unsafe = False):
         assert not self.isStatic(), "Cannot kick a static object"
         if not unsafe:
@@ -234,6 +240,8 @@ class PGBall(PGObject):
         # self._cpBody.apply_impulse_at_world_point(impulse, position)
         self._cpBody.apply_impulse_at_local_point(impulse, position)
 
+    position = property(getPos)
+    rotation = property(getRot)
     radius = property(getRadius)
     area = property(getArea)
 

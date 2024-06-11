@@ -1,0 +1,15 @@
+
+{"world":{"dims":[600,600],"bts":0.01,"gravity":200,"defaults":{"density":1,"friction":0.5,"elasticity":0.5,"color":"black","bk_color":"white"},
+"objects":{
+    "_LeftWall":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[-1,-1],[-1,601],[1,601],[1,-1]]},
+    "_BottomWall":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[-1,-1],[-1,1],[601,1],[601,-1]]},
+    "_RightWall":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[599,-1],[599,601],[601,601],[601,-1]]},
+    "_TopWall":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[-1,599],[-1,601],[601,601],[601,599]]},
+    "FunnelL":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[0,0],[0,250],[75,150],[75,0]]},
+    "FunnelR":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[125,150],[200,250],[200,150]]},
+    "FunnelB":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[75,0],[75,82],[150,82],[150,0]]},
+    "Block":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[192,0],[192,150],[200,150],[200,0]]},
+    "Goal":{"type":"Container","color":"black","density":0,"friction":0.5,"elasticity":0.5,"points":[[150,82],[150,5],[190,5],[190,82]],"width":10,"innerColor":"green","outerColor":"black"},
+    "Ball":{"type":"Ball","color":"red","density":1,"friction":0.5,"elasticity":0.5,"velocity":[0,0],"position":[490,125],"radius":15}},
+    "blocks":{"Blocker":{"color":"grey","vertices":[[0,0],[0,600],[200,600],[200,0]]}},
+    "constraints":{},"gcond":{"type":"ManyInGoal","objlist":["Ball"],"goal":"Goal","duration":1}},"tools":{"obj1":[[[-30,20],[30,20],[0,-20]]],"obj2":[[[-36,-36],[-36,36],[36,36],[36,-36]]],"obj3":[[[-40,-10],[-40,10],[40,10],[40,-10]]]},"toolNames":["obj1","obj2","obj3"],"sucText":"Get either red ball into the green goal"}

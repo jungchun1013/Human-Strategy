@@ -50,7 +50,8 @@ class Gaussian2DPolicy:
         baseline = np.mean(self.rewards)
         actions = torch.tensor(actions)
         rewards = torch.tensor(rewards)
-        gaussian_learning_rate = learning_rate * 1000
+        mu_learning_rate = learning_rate * 1000
+        sigma_learning_rate = learning_rate * 100
         # rewards = torch.tensor(rewards) - baseline
 
         prob = self.probability(actions)
@@ -63,9 +64,9 @@ class Gaussian2DPolicy:
             for var, i in product(['mu', 'sigma'], range(2)):
                 param_name = f"obj{tool}_{var}{i+1}"
                 if 'mu' in param_name:
-                    self.params[param_name].data = torch.clamp(self.params[param_name] + gaussian_learning_rate * self.params[param_name].grad, min=0, max=600)
+                    self.params[param_name].data = torch.clamp(self.params[param_name] + mu_learning_rate * self.params[param_name].grad, min=0, max=600)
                 elif 'sigma' in param_name:
-                    self.params[param_name].data = torch.clamp(self.params[param_name] + gaussian_learning_rate * self.params[param_name].grad, min=1)
+                    self.params[param_name].data = torch.clamp(self.params[param_name] + sigma_learning_rate * self.params[param_name].grad, min=1)
                 self.params[param_name].grad.zero_()
             self.params['prob'] += learning_rate * self.params['prob'].grad
             self.params['prob'].grad.zero_()        
@@ -95,6 +96,14 @@ class Gaussian2DPolicy:
 
 # return a initialized policy based on env (600*600)
 def initialize_policy(x, y, v=1.0):
+    if x < 0 + 50:
+        x = 50
+    elif x > 600 - 50:
+        x = 600 - 50
+    if y < 0 + 50:
+        y = 50
+    elif y > 600 - 50:
+        y = 600 - 50
     policy = Gaussian2DPolicy(x, y, v)
     return policy
 

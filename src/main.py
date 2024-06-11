@@ -1,6 +1,6 @@
 import argparse
 import json
-from random import choice, random, choices
+from random import choice, random, choices, randint
 import os
 from copy import deepcopy
 # import sys
@@ -11,21 +11,20 @@ from datetime import datetime
 import pickle
 import numpy as np
 import networkx as nx
-# from numpy import random as rd
-# import pygame as pg
 from pyGameWorld import ToolPicker
-# from pyGameWorld.jsrun import pyGetCollisionsAddForces
 # import pymunk as pm
 from pyGameWorld.helpers import centroidForPoly
+from pyGameWorld.viewer import demonstrateWorld, demonstrateTPPlacement
 from src.strategy import StrategyGraph, merge_graphs, merge_mechanisms, get_obj_type, train_mechanism
 from src.utils import setup_experiment_dir, setup_task_args
 from src.utils import get_prior_SSUP
-from src.utils import draw_path, calculate_reward, draw_samples
+from src.utils import draw_path, calculate_reward, draw_samples, draw_ellipse, draw_policies
 from src.utils import standardize_collisions
 from src.utils import save_strategy_graph, load_strategy_graph
 from src.utils import sample_ext_by_type
 from src.gaussian_policy import initialize_policy, plot_policies
 import src.config as config
+from src.UCB import UCB
 
 #############################################################
 #                                                           #
@@ -33,23 +32,39 @@ import src.config as config
 #                                                           #
 #############################################################
 
-def estimate_reward(sample_obj, sample_pos, noisy=False):
-    path_dict, collisions, success, _ = args.tp0.runStatePath(
+def estimate_reward(tp, sample_obj, sample_pos, noisy=False):
+    ''' estimate reward from PE given sample object and extrinsics 
+    
+    Args:
+        sample_obj (str): object name
+        sample_pos (list): object position
+        noisy (bool): noisy or deterministic
+    Returns:
+        path_info (tuple): path information {path_dict, collisions, success}
+        reward (float): reward
+    '''
+    path_dict, collisions, success, _ = tp.runStatePath(
         toolname=sample_obj,
         position=sample_pos,
         noisy=noisy
     )
     path_info = path_dict, collisions, success
-    reward = calculate_reward(args, args.tp0, path_dict)
+    reward = calculate_reward(args, path_dict)
     return path_info, reward
 
 def sample_from_mechanisms(mechanisms, idx=0):
-    '''
-        sample from mechanisms in strategy graph
+    '''sample from mechanisms in strategy graph
+
+    Args:
+        mechanisms (dict): mechanisms in strategy graph
+        idx (int): index
+    Returns:
+        obj (str): object name
+        obj_pos (list): object placement position
     '''
     cur_nd = 'Goal'
     available_objects = args.movable_objects + args.tool_objects
-    goal_pos = centroidForPoly(args.btr0['world']['objects']['Goal']['points'])
+    # goal_pos = centroidForPoly(args.btr0['world']['objects']['Goal']['points'])
     # obj_ext: for sampling
     obj_ext =[goal_pos[0], goal_pos[1], 0, random()*10-5, random()*10-5]
     # for backtracking
@@ -146,7 +161,133 @@ def sample_from_mechanisms(mechanisms, idx=0):
         print("Failed to sample from GPR")
         return None, None
 
+def sample_for_catapultalt2(strat_graph, idx=0):
+    '''sample the placement for Catapult assume the model is known
+    
+    Args:
+        strat_graph (StrategyGraph): strategy graph
+        idx (int): index
+    Returns:
+        tool (str): tool name
+        obj_pos (list): object placement position
+    '''
+
+    # NOTE - keyball
+    composition_config = []
+    composition_config.append({'cur_nd': 'Goal', 'pre_nd': 'CataBall', 'tool_init': 'CataBall', 'targ_init': 'Goal', 'strat_name': "CatapultAlt", 'strat_nodes': ['PLACED', 'CataBall', 'Goal']})
+    composition_config.append({'cur_nd': 'CataBall', 'pre_nd': 'PLACED', 'tool_init': 'PLACED', 'targ_init': 'CataBall', 'strat_name': "CatapultAlt", 'strat_nodes': ['PLACED', 'CataBall', 'Goal']})
+
+    node_sequence = ['Goal',  'CataBall', 'PLACED']
+
+    obj_pos = sample_for_specific_task(composition_config, strat_graph)
+    save_img_data(node_sequence, idx)
+
+    tool = choice(list(args.tp0.toolNames))
+    return tool, obj_pos
+
+def sample_for_catapultalt1(strat_graph, idx=0):
+    '''sample the placement for Catapult assume the model is known
+    
+    Args:
+        strat_graph (StrategyGraph): strategy graph
+        idx (int): index
+    Returns:
+        tool (str): tool name
+        obj_pos (list): object placement position
+    '''
+
+    # NOTE - keyball
+    composition_config = []
+    composition_config.append({'cur_nd': 'Goal', 'pre_nd': 'KeyBall', 'tool_init': 'KeyBall', 'targ_init': 'Goal', 'strat_name': "CatapultAlt", 'strat_nodes': ['PLACED', 'Lever', 'CataBall', 'KeyBall','Goal']})
+    composition_config.append({'cur_nd': 'KeyBall', 'pre_nd': 'CataBall', 'tool_init': 'CataBall', 'targ_init': 'KeyBall', 'strat_name': "CatapultAlt", 'strat_nodes': ['PLACED', 'Lever', 'CataBall', 'KeyBall','Goal']})
+    composition_config.append({'cur_nd': 'CataBall', 'pre_nd': 'Lever', 'tool_init': 'Lever', 'targ_init': 'CataBall', 'strat_name': "CatapultAlt", 'strat_nodes': ['PLACED', 'Lever', 'CataBall', 'KeyBall','Goal']})
+    composition_config.append({'cur_nd': 'Lever', 'pre_nd': 'PLACED', 'tool_init': 'PLACED', 'targ_init': 'Lever', 'strat_name': "CatapultAlt", 'strat_nodes': ['PLACED', 'Lever', 'CataBall', 'KeyBall','Goal']})
+    node_sequence = ['Goal',  'KeyBall', 'CataBall', 'Lever', 'PLACED']
+
+    obj_pos = sample_for_specific_task(composition_config, strat_graph)
+    save_img_data(node_sequence, idx)
+
+
+    tool = choice(list(args.tp0.toolNames))
+    return tool, obj_pos
+
 def sample_for_catapultalt(strat_graph, idx=0):
+    '''sample the placement for Catapult assume the model is known
+    
+    Args:
+        strat_graph (StrategyGraph): strategy graph
+        idx (int): index
+    Returns:
+        tool (str): tool name
+        obj_pos (list): object placement position
+    '''
+
+    # NOTE - keyball
+    composition_config = []
+    composition_config.append({'cur_nd': 'Ball', 'pre_nd': 'Ball2', 'tool_init': 'KeyBall', 'targ_init': 'Goal', 'strat_name': "Launch_v2", 'strat_nodes': ['PLACED', 'Ball2', 'Ball', 'Goal']})
+    # composition_config.append({'cur_nd': 'Ball', 'pre_nd': 'Ball2', 'tool_init': 'CataBall', 'targ_init': 'KeyBall', 'strat_name': "Launch_v2"})
+    # composition_config.append({'cur_nd': 'Goal', 'pre_nd': 'Ball', 'tool_init': 'CataBall', 'targ_init': 'KeyBall', 'strat_name': "Funnel"})
+    composition_config.append({'cur_nd': 'Ball', 'pre_nd': 'CataBall', 'tool_init': 'CataBall', 'targ_init': 'KeyBall', 'strat_name': "Funnel", 'strat_nodes': ['CataBall', 'Ball', 'Goal']})
+    composition_config.append({'cur_nd': 'Ball', 'pre_nd': 'Catapult', 'tool_init': 'Lever', 'targ_init': 'CataBall', 'strat_name': "Catapult", 'strat_nodes': ['PLACED', 'Catapult', 'Ball', 'Goal']})
+    composition_config.append({'cur_nd': 'Catapult', 'pre_nd': 'PLACED', 'tool_init': 'PLACED', 'targ_init': 'Lever', 'strat_name': "Catapult", 'strat_nodes': ['PLACED', 'Catapult', 'Ball', 'Goal']})
+    node_sequence = ['Goal',  'KeyBall', 'CataBall', 'Lever', 'PLACED']
+
+    obj_pos = sample_for_specific_task(composition_config, strat_graph)
+    save_img_data(node_sequence, idx)
+
+
+    tool = choice(list(args.tp0.toolNames))
+    return tool, obj_pos
+
+
+def sample_for_chaining(strat_graph, idx=0):
+    '''sample the placement for Catapult assume the model is known
+    
+    Args:
+        strat_graph (StrategyGraph): strategy graph
+        idx (int): index
+    Returns:
+        tool (str): tool name
+        obj_pos (list): object placement position
+    '''
+    # NOTE - keyball
+    composition_config = []
+    composition_config.append({'cur_nd': 'Goal', 'pre_nd': 'Ball3', 'tool_init': 'Ball3', 'targ_init': 'Goal', 'strat_name': "ChainingUnit", 'strat_nodes': ['PLACED', 'Ball3', 'Goal']})
+    composition_config.append({'cur_nd': 'Goal', 'pre_nd': 'Ball3', 'tool_init': 'Ball2', 'targ_init': 'Ball3', 'strat_name': "ChainingUnit", 'strat_nodes': ['PLACED', 'Ball3', 'Goal']})
+    composition_config.append({'cur_nd': 'Goal', 'pre_nd': 'Ball3', 'tool_init': 'Ball1', 'targ_init': 'Ball2', 'strat_name': "ChainingUnit", 'strat_nodes': ['PLACED', 'Ball3', 'Goal']})
+    composition_config.append({'cur_nd': 'Ball2', 'pre_nd': 'PLACED', 'tool_init': 'PLACED', 'targ_init': 'Ball1', 'strat_name': "Launch_v2", 'strat_nodes': ['PLACED', 'Ball2', 'Ball', 'Goal']})
+
+    node_sequence = ['Goal',  'Ball3', 'Ball2', 'Ball1', 'PLACED']
+
+    obj_pos = sample_for_specific_task(composition_config, strat_graph)
+    save_img_data(node_sequence, idx)
+
+    tool = choice(list(args.tp0.toolNames))
+    return tool, obj_pos
+
+
+def sample_for_multislope(strat_graph, idx=0):
+    '''sample the placement for Catapult assume the model is known
+    
+    Args:
+        strat_graph (StrategyGraph): strategy graph
+        idx (int): index
+    Returns:
+        tool (str): tool name
+        obj_pos (list): object placement position
+    '''
+    # NOTE - keyball
+    composition_config = []
+    composition_config.append({'cur_nd': 'Goal', 'pre_nd': 'Ball', 'tool_init': 'Ball2', 'targ_init': 'Goal', 'strat_name': "SlopeR_v2", 'strat_nodes': ['PLACED', 'Ball', 'Goal']})
+    composition_config.append({'cur_nd': 'Goal', 'pre_nd': 'Ball1', 'tool_init': 'Ball1', 'targ_init': 'Ball2', 'strat_name': "SmallSlope", 'strat_nodes': ['PLACED', 'Ball1', 'Ball2', 'Goal']})
+    composition_config.append({'cur_nd': 'Ball1', 'pre_nd': 'PLACED', 'tool_init': 'PLACED', 'targ_init': 'Ball1', 'strat_name': "SmallSlope", 'strat_nodes': ['PLACED', 'Ball1', 'Ball2', 'Goal']})
+    obj_pos = sample_for_specific_task(composition_config, strat_graph)
+    node_sequence = ['Goal',  'Ball2', 'Ball1', 'PLACED']
+    save_img_data(node_sequence, idx)
+    tool = choice(list(args.tp0.toolNames))
+    return tool, obj_pos
+
+def sample_for_specific_task(composition_config, strat_graph):
     cur_nd = 'Goal'
     pre_nd = None
     img_poss = [[],[]]
@@ -156,95 +297,70 @@ def sample_for_catapultalt(strat_graph, idx=0):
     # for backtracking
     obj_pos = goal_pos
     args.sequence_sample_poss.setdefault('Goal', []).append(list(obj_pos)+[0,0,0])
-    print(cur_nd,obj_pos)
-    # NOTE - keyball
-    pre_nd = 'Ball'
-    prev_target_ext = list(goal_pos) + [0, 0, 0]
-    target_init_pos = goal_pos
-    tool_init_pos = args.tp0.objects['KeyBall'].position
-    x = [list(obj_ext[2:]) + list(prev_target_ext) + list(tool_init_pos) + list(target_init_pos)]
-    g = [g for g in strat_graph.placement_graphs if g.has_edge(pre_nd, cur_nd) and g.has_node('Ball2')][0]
-    sample_poss = g.edges[(pre_nd, cur_nd)]['model'].sample_y(x, n_samples=10, random_state=None)
-    sample_poss = [list(item)
-        for sublist in np.transpose(np.array(sample_poss), (0, 2, 1))
-        for item in sublist]
-    obj_ext = list(np.array(sample_poss).mean(axis=0))
-    obj_pos = [obj_pos[0] + obj_ext[0], obj_pos[1] + obj_ext[1], obj_ext[2], obj_ext[3], obj_ext[4]]
-    print((pre_nd, cur_nd),obj_pos)
-    args.sequence_sample_poss.setdefault('KeyBall', []).append(obj_pos)
-    # Cataball
-    cur_nd = 'Ball'
-    pre_nd = 'Ball2'
-    obj = args.tp0.objects['KeyBall']
-    prev_target_ext = (list(obj.position) + [0] + list(obj.velocity))
-    target_init_pos = args.tp0.objects['KeyBall'].position
-    tool_init_pos = args.tp0.objects['CataBall'].position
-    x = [list(obj_ext[2:]) + list(prev_target_ext) + list(tool_init_pos) + list(target_init_pos)]
-    g = [g for g in strat_graph.placement_graphs if g.has_edge(pre_nd, cur_nd) and g.has_node('Ball2')][0]
-    sample_poss = g.edges[(pre_nd, cur_nd)]['model'].sample_y(x, n_samples=10, random_state=None)
-    sample_poss = [list(item)
-        for sublist in np.transpose(np.array(sample_poss), (0, 2, 1))
-        for item in sublist]
-    obj_ext = list(np.array(sample_poss).mean(axis=0))
-    print(obj_ext)
-    obj_pos = [obj_pos[0] + obj_ext[0], obj_pos[1] + obj_ext[1], obj_ext[2], obj_ext[3], obj_ext[4]]
-    # NOTE - assume cataball pos is known
-    obj_pos = [473.32756927516067, 154.87794114858616, -4.393402436807605, -32.519386569688876, 41.51949072226279]
-    print((pre_nd, cur_nd),obj_pos)
-    args.sequence_sample_poss.setdefault('CataBall', []).append(obj_pos)
-    # lever
-    cur_nd = 'Ball'
-    pre_nd = 'Catapult'
-    obj = args.tp0.objects['Lever']
-    prev_target_ext = (list(obj.position) + [0] + list(obj.velocity))
-    target_init_pos = args.tp0.objects['Lever'].position
-    tool_init_pos = args.tp0.objects['CataBall'].position
-    x = [list(obj_ext[2:]) + list(prev_target_ext) + list(tool_init_pos) + list(target_init_pos)]
-    g = [g for g in strat_graph.placement_graphs if g.has_edge(pre_nd, cur_nd)][0]
-    sample_poss = g.edges[(pre_nd, cur_nd)]['model'].sample_y(x, n_samples=10, random_state=None)
-    sample_poss = [list(item)
-        for sublist in np.transpose(np.array(sample_poss), (0, 2, 1))
-        for item in sublist]
-    obj_ext = list(np.array(sample_poss).mean(axis=0))
-    for s in sample_poss:
-        args.sequence_sample_poss.setdefault('Lever', []).append([obj_pos[0] + s[0], obj_pos[1] + s[1], s[2], s[3], s[4]])
-    obj_pos = [obj_pos[0] + obj_ext[0], obj_pos[1] + obj_ext[1], obj_ext[2], obj_ext[3], obj_ext[4]]
-    print((pre_nd, cur_nd),obj_pos)
-    # args.sequence_sample_poss.setdefault('Lever', []).append(obj_pos)
+    args.sequence_obj_pos.setdefault('Goal', []).append(list(obj_pos)+[0,0,0])
+    print(('X',cur_nd),obj_pos)
+    for cfg in composition_config:
+        g = [g for g in 
+            strat_graph.strategy_graphs[cfg['strat_name']].placement_graphs 
+            if set(g.nodes()) == set(cfg['strat_nodes'])][0]
+        cur_nd = cfg['cur_nd']
+        pre_nd = cfg['pre_nd']
+        if cfg['targ_init'] == "Goal":
+            prev_target_ext = list(goal_pos) + [0, 0, 0]
+            target_init_pos = goal_pos
+        else:
+            obj_name = cfg['targ_init']
+            obj = args.tp0.objects[obj_name]
+            prev_target_ext = (list(obj.position) + [0] + list(obj.velocity))
+            target_init_pos = args.tp0.objects[obj_name].position
+        if cfg['tool_init'] != "PLACED":
+            tool_init_pos = args.tp0.objects[cfg['tool_init']].position
+            x = [list(obj_ext[2:]) + list(prev_target_ext) + list(tool_init_pos) + list(target_init_pos)]
+        else:
+            x = [obj_ext[2:] + list(target_init_pos)]
+        # print(pre_nd, cur_nd)
+        sample_poss = g.edges[(pre_nd, cur_nd)]['model'].sample_y(x, n_samples=20, random_state=None)
+        sample_poss = [list(item)
+            for sublist in np.transpose(np.array(sample_poss), (0, 2, 1))
+            for item in sublist]
+        obj_ext = list(np.array(sample_poss).mean(axis=0))
+        for s in sample_poss:
+            args.sequence_sample_poss.setdefault(cfg['tool_init'], []).append([obj_pos[0] + s[0], obj_pos[1] + s[1], s[2], s[3], s[4]])
+        obj_pos = [obj_pos[0] + obj_ext[0], obj_pos[1] + obj_ext[1], obj_ext[2], obj_ext[3], obj_ext[4]]
+        args.sequence_obj_pos.setdefault(cfg['tool_init'], []).append(obj_pos)
+        print((pre_nd, cur_nd),obj_pos)
+    return obj_pos
 
-    # tool
-    cur_nd = 'Catapult'
-    pre_nd = 'PLACED'
-    obj = args.tp0.objects['Lever']
-    target_init_pos = args.tp0.objects['Lever'].position
-    x = [obj_ext[2:] + list(target_init_pos)]
-    g = [g for g in strat_graph.placement_graphs if g.has_edge(pre_nd, cur_nd)][0]
-    sample_poss = g.edges[(pre_nd, cur_nd)]['model'].sample_y(x, n_samples=10, random_state=None)
-    sample_poss = [list(item)
-        for sublist in np.transpose(np.array(sample_poss), (0, 2, 1))
-        for item in sublist]
-    obj_ext = list(np.array(sample_poss).mean(axis=0))
-    obj_pos = [obj_pos[0] + obj_ext[0], obj_pos[1] + obj_ext[1], obj_ext[2], obj_ext[3], obj_ext[4]]
-    args.sequence_sample_poss.setdefault('PLACED', []).append(obj_pos)
-    print((pre_nd, cur_nd),obj_pos)
+def save_img_data(node_sequence, idx):
     img_name = os.path.join(args.dir_name,
-        'catapult_seq.png'
-    )
-    img_poss = [args.sequence_sample_poss[v] for v in ['Goal',  'KeyBall', 'CataBall', 'Lever', 'PLACED']]
+        args.tnm+'_samples'+str(idx)+'.png')
+    img_poss = [args.sequence_sample_poss[v] for v in node_sequence]
     draw_samples(args.tp0, img_poss, '', img_name)
-    # tool = choice(list(g.nodes[cur_nd]['tools']))
-    tool = choice(list(args.tp0.toolNames))
-    return tool, obj_pos
+
+    img_name = os.path.join(args.dir_name,
+        args.tnm+'_samples_ellipse'+str(idx)+'.png')
+    draw_ellipse(args.tp0, img_poss, '', img_name)
+
+    img_name = os.path.join(args.dir_name,
+        args.tnm+'_sample_mean'+str(idx)+'.png')
+    img_poss = [args.sequence_obj_pos[v] for v in node_sequence]
+    draw_samples(args.tp0, img_poss, '', img_name)
 
 
 def sample_from_strategy_graph(strat_graph, idx=0):
+    '''do sample from gaussian process model in graph
+
+    Args:
+        strat_graph (StrategyGraph): strategy graph
+        idx (int): index
+    Returns:
+        tool (str): tool name
+        obj_pos (list): object placement position
     '''
-        do sample from gaussian process model in graph
-    '''
-    graph_list = [g for g in strat_graph.placement_graphs
-        if all('model' in g.edges[e] for e in g.edges()
-            if e not in list(args.tp0.toolNames) + ['Goal']
-        )
+    graph_list = [g for graph in strat_graph.strategy_graphs for g in strat_graph.strategy_graphs[graph].placement_graphs
+        # if all('model' in g.edges[e] for e in g.edges()
+        #     if e not in list(args.tp0.toolNames) + ['Goal']
+        # )
     ]
     g = choice(graph_list)
     print("Selected graph", g.edges())
@@ -257,7 +373,8 @@ def sample_from_strategy_graph(strat_graph, idx=0):
     # for backtracking
     obj_pos = goal_pos
     args.sequence_sample_poss.setdefault(cur_nd, []).append(list(obj_pos)+[0,0,0])
-    while cur_nd != 'PLACED':
+    # while cur_nd != 'PLACED' or g.predecessors(cur_nd):
+    while list(g.predecessors(cur_nd)):
         # relative extrinsics
         pre_nd = choice(list(g.predecessors(cur_nd)))
         if pre_nd != 'PLACED' and cur_nd == 'Goal':
@@ -282,19 +399,10 @@ def sample_from_strategy_graph(strat_graph, idx=0):
         sample_poss = [list(item)
         for sublist in np.transpose(np.array(sample_poss), (0, 2, 1))
         for item in sublist]
-        # pos = []
-        # print(x)
-        # for est_gp in g.edges[(pre_nd, cur_nd)]['model']:
-        #     pos.append(est_gp.predict(x))
-        # sample_poss = [pos]
-        # set to real extrinsics
         obj_ext = list(np.array(sample_poss).mean(axis=0))
         for s in sample_poss:
             args.sequence_sample_poss.setdefault(cur_nd, []).append([obj_pos[0] + s[0], obj_pos[1] + s[1], s[2], s[3], s[4]])
         obj_pos = [obj_pos[0] + obj_ext[0], obj_pos[1] + obj_ext[1], obj_ext[2], obj_ext[3], obj_ext[4]]
-        # args.sequence_sample_poss.setdefault(cur_nd, []).append(obj_pos)
-
-        
         print(pre_nd, cur_nd, obj_pos)
         cur_nd = pre_nd
         if not sample_poss: # failed to sample from GPR
@@ -304,10 +412,14 @@ def sample_from_strategy_graph(strat_graph, idx=0):
     )
     img_poss = [v for v in args.sequence_sample_poss.values()]
     draw_samples(args.tp0, img_poss, '', img_name)
-    tool = choice(list(g.nodes[cur_nd]['tools']))
+    tool = choice(list(g.nodes[cur_nd]['tools'])) if cur_nd == 'PLACED' else cur_nd
     return tool, obj_pos # only return one sample
 
 def sample_from_gm(strategy_graph):
+    ''' sample from gaussian model in strategy graph
+
+    The method is used in build_strategy_graph for sampling demo with counterfactual physics
+    '''
     graph_list = [(g, strategy_graph.fpg_gmm_list[i])
         for i, g in enumerate(strategy_graph.placement_graphs)
         if strategy_graph.fpg_gmm_list[i]]
@@ -335,6 +447,7 @@ def simulate_from_gm(sample_obj, gmm_pose, noisy=False):
             noisy=noisy
         )
     else:
+        # NOTE - for object, only change velocity
         # btr['world']['objects'][sample_obj]['position'] = gmm_pose[0:2]
         # btr['world']['objects'][sample_obj]['rotation'] = gmm_pose[2]
         btr['world']['objects'][sample_obj]['velocity'] = gmm_pose[3:]
@@ -349,13 +462,13 @@ def simulate_from_gm(sample_obj, gmm_pose, noisy=False):
 #############################################################
 
 # FIXME - deprecated method
-def build_strategy_graph(strat_graph=None):
+def build_strategy_graph(task_series, strat_graph=None, start_tool = 'PLACED'):
     if strat_graph:
         strategy_graph = strat_graph
     else:
-        strategy_graph = StrategyGraph()
+        strategy_graph = StrategyGraph(task_series, [start_tool])
     sim_count = 0
-    while sim_count < args.num_trials: # loop based on number of sim in PE
+    while sim_count < args.num_demos: # loop based on number of sim in PE
         args.btr = deepcopy(args.btr0)
         args.tp = ToolPicker(args.btr0)
         success = False
@@ -364,6 +477,7 @@ def build_strategy_graph(strat_graph=None):
             # sample extrinsics from gaussian model in SG
             can_sample_from_gm = any(i
                 for i in strategy_graph.fpg_gmm_list)
+            # FIXME - no gm
             if can_sample_from_gm and random() < args.gm_ratio:
                 sample_type = 'gm'
                 sample_obj, sample_ext = sample_from_gm(strategy_graph)
@@ -374,18 +488,20 @@ def build_strategy_graph(strat_graph=None):
                 )
             else:
                 # sample_type = sample_exttype(args, strategy_graph)
-                sample_type = 'tool'
+                if start_tool != 'PLACED':
+                    sample_type = 'CF'
+                    sample_objs = [start_tool]
+                else:
+                    sample_type = 'tool'
+                    sample_objs = None
                 sample_obj, sample_ext, ext_info, path_info = sample_ext_by_type(
-                    args,
-                    sample_type,
-                    strategy_graph,
-                )
+                        args,
+                        sample_type,
+                        strategy_graph,
+                        sample_objs = sample_objs
+                    )
             path_dict, collisions, success = path_info
             if collisions:
-                # collisions = standardize_collisions(collisions)
-                # for c in collisions:
-                #     print(c[0:4])
-                # print()
                 img_name = os.path.join(args.dir_name,
                     'collision.png'
                 )
@@ -399,14 +515,61 @@ def build_strategy_graph(strat_graph=None):
                 # NOTE - eliminate the case that the graph does not have path to goal due to noisy env
                 if "Goal" in graph.nodes():
                     sim_count += 1
-                    strategy_graph.set_placement_graph(args, graph, sample_obj)
+                    strategy_graph.set_placement_graph(args, graph, start_tool)
 
         # !SECTION
-    strategy_graph.merge_graph(args)
-    strategy_graph.train(args)
     return strategy_graph
 
 
+def test(sample_obj, sample_pos, noisy=False):
+    if sample_obj in args.tool_objects:
+        tp = args.tp0
+        path_dict, collisions, success, _ = tp.runStatePath(
+            toolname=sample_obj,
+            position=sample_pos,
+            noisy=noisy
+        )
+    else:
+        btr = args.btr0
+        btr['world']['objects'][sample_obj]['position'] = sample_pos[:2]
+        btr['world']['objects'][sample_obj]['rotation'] = sample_pos[2]
+        btr['world']['objects'][sample_obj]['velocity'] = sample_pos[3:]
+        tp = ToolPicker(btr)
+        path_dict, collisions, success, _ = tp.runStatePath(
+            toolname=None,
+            position=None,
+            noisy=noisy
+        )
+    if success:
+        logging.info('Attempt Success: %s (%d, %d)', sample_obj,
+            sample_pos[0], sample_pos[1])
+        args.trial_stats['strat'].append([
+            [sample_pos[0], sample_pos[1]]])
+        img_name = os.path.join(args.dir_name,
+            'test.png'
+        )
+        img_poss = [v for v in args.sequence_sample_poss.values()]
+        draw_samples(args.tp0, img_poss, '', img_name)
+    else:
+        logging.info('Attempt Failed')
+    return (path_dict, collisions, success)
+
+def sample(strat_seq=None):
+    if 'CatapultAlt' in args.tnm:
+        if strat_seq == ['PLACED', 'Lever','CataBall', 'KeyBall', 'Goal']:
+            sample_object, sample_position = sample_for_catapultalt1(strategy_graph)
+        elif strat_seq == ['PLACED', 'CataBall', 'Goal']:
+            sample_object, sample_position = sample_for_catapultalt2(strategy_graph)
+        else:
+            # TODO - sample from another graph
+            sample_object, sample_position = sample_for_catapultalt(strategy_graph)
+    elif args.tnm == 'Chaining':
+        sample_object, sample_position = sample_for_chaining(strategy_graph)
+    elif args.tnm == 'MultiSlope_v3':
+        sample_object, sample_position = sample_for_multislope(strategy_graph)
+    else:
+        sample_object, sample_position = sample_from_strategy_graph(strategy_graph)
+    return sample_object, sample_position
 #############################################################
 #                                                           #
 # ANCHOR - human strategy approachs                         #
@@ -426,7 +589,7 @@ def random_tool():
             noisy=args.noisy
         )
         sim_count += 1
-        reward = calculate_reward(args, args.tp0, path_dict)
+        reward = calculate_reward(args, path_dict)
         logging.info('Simlation %d %d: %s (%d, %d), %s %f',
             action_count, sim_count, sample_obj, sample_pos[0], sample_pos[1], success, reward)
         if reward > args.attempt_threshold:
@@ -441,6 +604,12 @@ def random_tool():
                 logging.info('Success')
                 args.trial_stats.append([action_count, sim_count])
 
+#############################################################
+#                                                           #
+# SSUP functions                                            #
+#                                                           #
+#############################################################
+
 def initialize_SSUP_policy(policies):
     tp = args.tp0
     get_prior = args.get_prior
@@ -452,7 +621,7 @@ def initialize_SSUP_policy(policies):
             reward = []
             for j in range(args.num_sim):
                 _, r = estimate_reward(
-                    tool, sample_pos, noisy=True
+                    tp, tool, sample_pos, noisy=True
                 )
                 reward.append(r)
             reward = np.mean(reward)
@@ -461,7 +630,7 @@ def initialize_SSUP_policy(policies):
         print(samples, rewards)
         for i in range(args.num_init):
             policies.update([samples[i]], [rewards[i]], learning_rate=args.lr)
-    print(policies)
+    logging.info('Policies\n%s', policies)
     return policies
 
 def counterfactual_update(sample, sample_obj, sample_pos, reward, policies):
@@ -476,14 +645,22 @@ def counterfactual_update(sample, sample_obj, sample_pos, reward, policies):
                 position=sample_pos,
                 noisy=True
             )
-            cf_reward = calculate_reward(args, tp, path_dict)
+            cf_reward = calculate_reward(args, path_dict)
         policies.update([cf_sample], [cf_reward], learning_rate=args.lr)
-    img_name = os.path.join(args.dir_name,
-            'plot'+str(args.sim_count)+'.png'
-        )
-    plot_policies(args, policies, sample_pos, int(sample_obj[3])-1, img_name)
+    # img_name = os.path.join(args.dir_name,
+    #         'plot'+str(args.sim_count)+'.png'
+    #     )
+    # plot_policies(args, policies, sample_pos, int(sample_obj[3])-1, img_name)
     return policies
+
 def SSUP(policies):
+    '''Sample, simulate, update policy
+    
+    Args:
+        policies (GaussianPolicies): policy for three tools
+    Returns:
+        trial_stats (dict): trial stats
+    '''
     tp = args.tp0
     get_prior = args.get_prior
     epsilon = args.eps
@@ -493,18 +670,23 @@ def SSUP(policies):
     # Simulate actions to get noisy rewards rˆ using internal model
     # initialize policy parameters theta using policy gradient on initial points
     policies = initialize_SSUP_policy(policies)
-    # plot
-    img_name = os.path.join(args.dir_name,'plot_init.png')
-    plot_policies(args, policies, None, 0, img_name)
+
+    # plot]
+    if not os.path.exists(os.path.join(args.dir_name,'plot')):
+        os.makedirs(os.path.join(args.dir_name,'plot'))
+    img_name = os.path.join(args.dir_name,'plot/plot_init.png')
+    # plot_policies(args, policies, None, 0, img_name)
+    draw_policies(tp, policies, img_name)
     sample_poss = []
     success = False
+    iter_count = 0
+    best_reward = -1
+    best_pos = None
+    best_obj = None
     while not success:
         # SECTION - Sample action
         acting = False
         sample_type = 'GM'
-        best_reward = -1
-        best_pos = None
-        iter_count = 0
         if random() < epsilon:
             # NOTE - sample from prior
             sample_type = 'prior'
@@ -513,7 +695,7 @@ def SSUP(policies):
             sample = [sample_pos[0], sample_pos[1], int(sample_obj[3])-1]
             # Estimate noisy reward rˆ from internal model on action a
             path_info, reward = estimate_reward(
-                sample_obj, sample_pos, noisy=True
+                tp, sample_obj, sample_pos, noisy=True
             )
             sim_count += 1
         else:
@@ -525,7 +707,7 @@ def SSUP(policies):
             for _ in range(args.num_sim):
                 # Estimate noisy reward rˆ from internal model on action a
                 path_info, reward = estimate_reward(
-                    sample_obj, sample_pos, noisy=True
+                    tp, sample_obj, sample_pos, noisy=True
                 )
                 rewards.append(reward)
                 sim_count += 1
@@ -539,26 +721,31 @@ def SSUP(policies):
         if reward > best_reward:
             best_reward = reward
             best_pos = sample_pos
+            best_obj = sample_obj
         # try_action = reward > args.attempt_threshold
         if reward > args.attempt_threshold:
             acting = True
         elif iter_count >= args.num_iter:
             acting = True
             reward = best_reward
-            sample = best_pos
+            sample_pos = best_pos
+            sample_obj = best_obj
             # reset
             best_reward = -1
             best_pos = None
+            best_obj = None
             iter_count = 0
-        sim_count += 1
-
         # !SECTION
         success = False
         if acting:
+            logging.info('Sample %d %d: %s %s (%d, %d), %s, %f',
+            action_count, sim_count, sample_obj, sample_type,
+            sample_pos[0], sample_pos[1], success, reward)
             # Observe r from environment on action a.
             path_info, reward = estimate_reward(
-                sample_obj, sample_pos, noisy=False
+                tp, sample_obj, sample_pos, noisy=False
             )
+            logging.info('Policies\n %s', policies)
             success = path_info[2]
             # epsilon *= args.eps_decay_rate
             action_count += 1
@@ -566,43 +753,204 @@ def SSUP(policies):
             logging.info('Attempt %d %d: %s %s (%d, %d), %f',
                 action_count, sim_count, sample_obj, sample_type,
                 sample_pos[0], sample_pos[1], reward)
-            print(policies)
             if success:
                 logging.info("Success! %d %d", action_count, sim_count)
                 img_name = os.path.join(args.dir_name,
-                    'plot_final.png'
+                    'plot/plot_final.png'
                 )
-                plot_policies(args, policies, sample_pos, int(sample_obj[3])-1, img_name)
+                # plot_policies(args, policies, sample_pos, int(sample_obj[3])-1, img_name)
+                draw_policies(tp, policies, img_name)
                 args.trial_stats.setdefault('SSUP', []).append([action_count, sim_count])
                 break
             # Simulate rˆ assuming other two tool choices.
             # Update policy based on all three estimates and actions.
             args.sim_count = sim_count
             policies = counterfactual_update(sample, sample_obj, sample_pos, reward, policies)
+            img_name = os.path.join(args.dir_name,
+                'plot/plot_'+str(action_count)+'.png'
+            )
+            # plot_policies(args, policies, sample_pos, int(sample_obj[3])-1, img_name)
+            draw_policies(tp, policies, img_name)
         else:
             # Update policy using policy gradient
             policies.update([sample], [reward], learning_rate=args.lr)
+
         if action_count >= args.max_attempts or sim_count >= args.max_simulations:
             logging.info("Out of max attempt! %d %d", action_count, sim_count)
             args.trial_stats.setdefault('SSUP', []).append([action_count, sim_count])
             break
-    return args.trial_stats
+    sample_pos = [sample_pos[0], sample_pos[1], 0, 0, 0]
+    return sample_obj, sample_pos, path_info
 
+def SSUP2(policies, strategies):
+    '''Sample, simulate, update policy
+    
+    Args:
+        policies (GaussianPolicies): policy for three tools
+    Returns:
+        trial_stats (dict): trial stats
+    '''
+    tp = args.tp0
+    get_prior = args.get_prior
+    epsilon = args.eps
+    action_count = 0
+    sim_count = 0
+    if args.UCB:
+        ucb_agent = UCB(n_actions=len(strategies))
+
+    # Sample ninit points from prior pi(s) for each tool
+    # Simulate actions to get noisy rewards rˆ using internal model
+    # initialize policy parameters theta using policy gradient on initial points
+    if not os.path.exists(os.path.join(args.dir_name,'plot')):
+        os.makedirs(os.path.join(args.dir_name,'plot'))
+    
+    for i, p in enumerate(policies):
+        policies[i] = initialize_SSUP_policy(p)
+
+        img_name = os.path.join(args.dir_name,'plot/plot_init'+str(i)+'.png')
+        draw_policies(tp, p, img_name)
+    sample_poss = []
+    success = False
+    iter_count = 0
+    best_reward = -1
+    best_pos = None
+    best_obj = None
+    while not success:
+        # SECTION - Sample action
+        acting = False
+        sample_type = 'GM'
+        # NOTE - select strategy first
+        if args.UCB:
+            # strategy_idx = ucb_agent.select_action()
+            strategy_idx = choice([0,1])
+        logging.info('Selected strategy %s %s', strategies[strategy_idx], ucb_agent.values)
+        
+        if random() < epsilon:
+            # NOTE - sample from prior
+            sample_type = 'prior'
+            sample_obj = choice(list(tp.toolNames))
+            sample_pos = get_prior(args.tp0, args.movable_objects)
+            sample = [sample_pos[0], sample_pos[1], int(sample_obj[3])-1]
+            # Estimate noisy reward rˆ from internal model on action a
+            path_info, reward = estimate_reward(
+                tp, sample_obj, sample_pos, noisy=True
+            )
+            sim_count += 1
+        else:
+            # Sample from policy (at most sample 100 times)
+            sample = policies[strategy_idx].action()
+            sample_obj = 'obj'+str(sample[2]+1)
+            sample_pos = list(sample[0:2])
+            rewards = []
+            for _ in range(args.num_sim):
+                # Estimate noisy reward rˆ from internal model on action a
+                path_info, reward = estimate_reward(
+                    tp, sample_obj, sample_pos, noisy=True
+                )
+                rewards.append(reward)
+                sim_count += 1
+            reward = np.mean(rewards)
+            iter_count += 1
+        logging.info('Simulation %d %d: %s %s (%d, %d), %s, %f',
+            action_count, sim_count, sample_obj, sample_type,
+            sample_pos[0], sample_pos[1], success, reward)
+        sample_poss.append([sample_pos, reward])
+        # best action
+        ucb_agent.update(strategy_idx, reward)
+        if reward > best_reward:
+            best_reward = reward
+            best_pos = sample_pos
+            best_obj = sample_obj
+        # try_action = reward > args.attempt_threshold
+        if reward > args.attempt_threshold:
+            acting = True
+        elif iter_count >= args.num_iter:
+            acting = True
+            reward = best_reward
+            sample_pos = best_pos
+            sample_obj = best_obj
+            # reset
+            best_reward = -1
+            best_pos = None
+            best_obj = None
+            iter_count = 0
+        # !SECTION
+        success = False
+        if acting:
+            logging.info('Sample %d %d: %s %s (%d, %d), %s, %f',
+            action_count, sim_count, sample_obj, sample_type,
+            sample_pos[0], sample_pos[1], success, reward)
+            # Observe r from environment on action a.
+            path_info, reward = estimate_reward(
+                tp, sample_obj, sample_pos, noisy=False
+            )
+            logging.info('Policies\n %d %s', strategy_idx, policies[strategy_idx])
+            success = path_info[2]
+            # epsilon *= args.eps_decay_rate
+            action_count += 1
+            # If successful, exit.
+            logging.info('Attempt %d %d: %s %s (%d, %d), %f',
+                action_count, sim_count, sample_obj, sample_type,
+                sample_pos[0], sample_pos[1], reward)
+            if success:
+                logging.info("Success! %d %d", action_count, sim_count)
+                img_name = os.path.join(args.dir_name,
+                    'plot/plot_final.png'
+                )
+                # plot_policies(args, policies, sample_pos, int(sample_obj[3])-1, img_name)
+                draw_policies(tp, policies[strategy_idx], img_name)
+                args.trial_stats.setdefault('SSUP', []).append([action_count, sim_count])
+                break
+            # Simulate rˆ assuming other two tool choices.
+            # Update policy based on all three estimates and actions.
+            args.sim_count = sim_count
+            policies[strategy_idx] = counterfactual_update(sample, sample_obj, sample_pos, reward, policies[strategy_idx])
+            img_name = os.path.join(args.dir_name,
+                'plot/plot_'+str(action_count)+'.png'
+            )
+            # plot_policies(args, policies, sample_pos, int(sample_obj[3])-1, img_name)
+            draw_policies(tp, policies[strategy_idx], img_name)
+        else:
+            # Update policy using policy gradient
+            policies[strategy_idx].update([sample], [reward], learning_rate=args.lr)
+
+        if action_count >= args.max_attempts or sim_count >= args.max_simulations:
+            logging.info("Out of max attempt! %d %d", action_count, sim_count)
+            args.trial_stats.setdefault('SSUP', []).append([action_count, sim_count])
+            break
+    sample_pos = [sample_pos[0], sample_pos[1], 0, 0, 0]
+    return sample_obj, sample_pos, path_info
+# SECTION - main program
 if __name__ == "__main__":
+    # SECTION - parse argument from command and config
     parser = argparse.ArgumentParser(description='Run SSUP')
     parser.add_argument('-a', '--algorithm',
                         help='SSUP/ours', default='SSUP')
     parser.add_argument('-t', '--num-trials',
                         help='number of trials', type=int, default=50)
-    parser.add_argument('--num-experiment',
-                        help='number of experiments', type=int, default=1)
+    parser.add_argument('--num-demos',
+                        help='number of demos for training', type=int, default=10)
+    parser.add_argument('--num-experiments',
+                        help='number of experiments', type=int, default=10)
     parser.add_argument('--tnm',
-                        help='task name', type=str, default='CatapultAlt')
-    parser.add_argument('--tnm2',
-                        help='task name for GPR', type=str, default=None)
+                        help='task name for testing performance', type=str, default='CatapultAlt')
+    parser.add_argument('--train-tnm',
+                        help='task name for train', type=str, default=None)
+    parser.add_argument('--tsnm',
+                        help='task series name', type=str, default=None)
     parser.add_argument('--json_dir',
                         help='json dir name', type=str,
                         default='./environment/Trials/Strategy/')
+    parser.add_argument('--SSUP',
+                        help='use SSUP for testing else only sampling', action='store_true')
+    parser.add_argument('-g', '--generalize',
+                        help='use SSUP for testing else only sampling', action='store_true')
+    parser.add_argument('-u', '--update',
+                        help='use SSUP for testing else only sampling', action='store_true')
+    parser.add_argument('--UCB',
+                        help='use SSUP for testing else only sampling', action='store_true')
+    parser.add_argument('--train',
+                        help='use SSUP for testing else only sampling', action='store_true')
     parser.add_argument('-v', '--verbose',
                         help='Increase output verbosity', action='store_true')
     parser.add_argument('--eps',
@@ -622,11 +970,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.algorithm in ['SSUP']:
         cfg = config.SSUP_config
-    elif args.algorithm in ['GPR_SSUP', 'GPR_SSUP_GEN']:
+    elif args.algorithm in ['GPR', 'GPR_GEN', 'GPR_SSUP', 'GPR_SSUP_GEN']:
         cfg = config.GPR_SSUP_config
     elif args.algorithm in ['GPR_MECH']:
         cfg = config.OURS_config
     args.__dict__['task'] = config.task_config[args.tnm]
+    args.__dict__['task2series'] = config.task2series
+    if not args.tsnm:
+        args.__dict__['tsnm'] = args.task2series[args.tnm]
+
+    if not args.train_tnm:
+        # training task is same as testing task
+        args.__dict__['train_tnm'] = args.tnm
     for c in cfg:
         if c not in args:
             args.__dict__[c] = cfg[c]
@@ -638,7 +993,10 @@ if __name__ == "__main__":
     setup_experiment_dir(args)
     setup_task_args(args)
     args.trial_stats = {'strat': [], 'mech': []}
-    for trial_count in range(args.num_experiment):
+    # !SECTION - parse argument from command and config
+
+    # SECTION - experiment loop
+    for trial_count in range(args.num_experiments):
         args.experiment_time = datetime.now()
         # SECTION - set up logging configuration
         trial_name = str(trial_count).zfill(3)
@@ -658,7 +1016,8 @@ if __name__ == "__main__":
         logging.getLogger().addHandler(console_handler)
         # NOTE - log args
         for arg in vars(args):
-            logging.info('%20s %-s', arg, args.__dict__[arg])
+            if not isinstance(args.__dict__[arg], dict):
+                logging.info('%20s %-s', arg, args.__dict__[arg])
         # !SECTION
         # SECTION - Start experiments
         if args.algorithm == 'random':
@@ -666,71 +1025,101 @@ if __name__ == "__main__":
         if args.algorithm == 'SSUP':
             gaussian_policies = initialize_policy(300, 300, 50)
             SSUP(gaussian_policies)
-        elif args.algorithm == 'GPR_SSUP':
-            strategy_graph = build_strategy_graph()
-            # strategy_graph = load_strategy_graph(None, 'strat0.pkl')
-            strategy_graph.train(args)
-            logging.info('Start Testing')
-            sample_object, sample_position = sample_from_strategy_graph(strategy_graph)
-            gaussian_policies = initialize_policy(sample_position[0], sample_position[1], 50)
-            SSUP(gaussian_policies)
-        elif args.algorithm == 'GPR_SSUP_GEN':
-            strategy_graphs = []
-            tasks = args.task['training']
-            # for tnm in tasks:
-            #     logging.info('Task %s', tnm)
-            #     setup_task_args(args, tnm)
-            #     strategy_graph = build_strategy_graph()
-            #     strategy_graphs.append(strategy_graph)
-            file_path = os.path.join('data/strategy', 'strat_'+args.tnm+'.pkl')
-            # save_strategy_graph(strategy_graphs, file_path)
-            strategy_graphs = load_strategy_graph(None, file_path)
-            strategy_graph = merge_graphs(args, strategy_graphs)
+        elif args.algorithm == 'GPR':
+            ''' same training and testing task
+                testing with sampling -> do attempt
+            '''
+            logging.info('Start training %s', args.tsnm)
+            # SECTION - learning/training
+            if args.generalize:
+                strategy_graphs = []
+                tasks = args.task['training']
+                start_tool = config.task_config[args.tsnm]['start_tool']
+                if args.train and  trial_count % 2 == 0:
+                    for tnm in tasks:
+                        logging.info('Training task %s', tnm)
+                        setup_task_args(args, tnm)
+                        start_tool = config.task_config[args.task2series[tnm]]['start_tool']
+                        strategy_graph = build_strategy_graph(args.task2series[tnm], start_tool=start_tool)
+                        strategy_graphs.append(strategy_graph)
+                    file_path = os.path.join('data/strategy', 'strat_'+args.tnm+'.pkl')
+                    save_strategy_graph(strategy_graphs, file_path)
+                file_path = os.path.join('data/strategy', 'strat_'+args.tnm+'.pkl')
+                strategy_graphs = load_strategy_graph(None, file_path)
+                strategy_graph = merge_graphs(args, strategy_graphs)
+            else:
+                logging.info('Training task %s', args.train_tnm)
+                start_tool = config.task_config[args.tsnm]['start_tool']
+                strategy_graph = build_strategy_graph(args.task2series[args.tnm], start_tool=start_tool)
+                strategy_graph.merge_graph(args)
+                strategy_graph.train(args)
+            # !SECTION - learning/training
+            # SECTION - adaptation/update
+            if args.update:
+                logging.info('Update... Task: %s', args.tnm)
+                tnm = args.tnm
+                setup_task_args(args, tnm)
+                update_trial_count = 0
+                success_list = []
+                c = 0
+                while update_trial_count <= args.num_demos:
+                    c += 1
+                    sample_object, sample_position = sample()
+                    if random() > 0.8:
+                        sample_object = choice(list(args.tp0.toolNames))
+                        sample_position = args.get_prior(args.tp0, args.movable_objects)
+                    sample_object = 'obj2'
+                    sample_position = [250+randint(1,50), 540+int(randint(1,40)), 0,0,0]
+                    # sample_position = [270, 550, 0,0,0]
+                    path_info = test(sample_object, sample_position[0:2], noisy=True)
+                    # info.append([sample_object, sample_position, path_info])
+                    if path_info[2]:
+                        args.sequence_sample_poss = {}
+                        args.sequence_obj_pos = {}
+                        update_trial_count += 1
+                        success_list.append(c)
+                        c=0
+                        # FIXME
+                        strategy_graph.build_data_for_catapultAlt(args, sample_object, sample_position, path_info)
 
-            # tnm = 'Catapult'
-            # setup_task_args(args, tnm)
-            # sample_object, sample_position = sample_from_strategy_graph(strategy_graph)
-            # gaussian_policies = initialize_policy(sample_position[0], sample_position[1], 50)
-            # SSUP(gaussian_policies)
-            # input()
-
-            tnm = args.tnm2 if args.tnm2 else args.tnm
-            logging.info('Start experiment %s', tnm)
-            setup_task_args(args, tnm)
-            # GPR
-            # sample_object, sample_position = sample_from_strategy_graph(strategy_graph)
-            sample_object, sample_position = sample_for_catapultalt(strategy_graph)
-            gaussian_policies = initialize_policy(sample_position[0], sample_position[1], 50)
-            SSUP(gaussian_policies)
-        elif args.algorithm == 'GPR_MECH':
-            setup_task_args(args)
-            strategy_graphs = []
-            tasks = args.task['training']
-            for tmn in tasks:
-                logging.info('Training %s', tmn)
-                setup_task_args(args, tmn)
-                strategy_graph = build_strategy_graph()
-                strategy_graphs.append(strategy_graph)
-            file_path = os.path.join('data/strategy', 'strat_'+args.tnm+'.pkl')
-            save_strategy_graph(strategy_graphs, file_path)
-            strategy_graphs = load_strategy_graph(None, file_path)
-            strategy_graph = merge_graphs(args, strategy_graphs)
-            # mechanisms = merge_mechanisms(args, strategy_graphs)
-            # train_mechanism(args, mechanisms)
-            tnm = args.task['testing']
-            logging.info('Start experiment')
-            logging.info('Strategy Graph on %s', tnm)
-            setup_task_args(args, tnm)
-            sample_object, sample_position = sample_from_strategy_graph(strategy_graph)
-            gaussian_policies = initialize_policy(sample_position[0], sample_position[1], 50)
-            SSUP(gaussian_policies)
-            # test_GPR(strategy_graph, sample_from_strategy_graph)
-            # print(mechanisms.keys())
-            # test_GPR(mechanisms, sample_from_mechanisms)
+            logging.info('Start testing %s', args.tnm)
+            # !SECTION - adaptation/update
+            # SECTION - inference/testing
+            if args.SSUP:
+                tnm = args.tnm
+                setup_task_args(args, tnm)
+                # GPR
+                if args.UCB:
+                    # TODO - sample strategy
+                    strat_sequence = []
+                    strat_sequence.append(['PLACED', 'Lever','CataBall', 'KeyBall', 'Goal'])
+                    # strat_sequence.append(['PLACED', 'CataBall', 'Goal'])
+                    gaussian_policies = []
+                    for strat_seq in strat_sequence:
+                        sample_object, sample_position = sample(strat_seq)
+                        gaussian_policies.append(initialize_policy(sample_position[0], sample_position[1], 50))
+                    sample_obj, sample_pos, path_info = SSUP2(gaussian_policies, strat_sequence)
+                else:
+                    sample_object, sample_position = sample()
+                    gaussian_policies = initialize_policy(sample_position[0], sample_position[1], 50)
+                    sample_obj, sample_pos, path_info = SSUP(gaussian_policies)
+            
+            else:
+                setup_task_args(args, args.tnm)
+                info = []
+                for i in range(100):
+                    sample_object, sample_position = sample()
+                    sample_object = 'obj2'
+                    # sample_position = [270+randint(1,40), 540+int(randint(1,40))]
+                    path_info = test(sample_object, sample_position, noisy=False)
+                    # info.append([sample_object, sample_position, path_info])
+            # !SECTION - testing  
         else:
             raise ValueError(f"Invalid algorithm: {args.algorithm}")
         time.sleep(1) # avoid generating same experiment id
         # !SECTION
+    # !SECTION - experiment loop
+    
 
     print('End experiments')
     # SECTION - log summary
@@ -746,3 +1135,4 @@ if __name__ == "__main__":
     duration = datetime.now() - args.experiment_time
     logging.info('%s', duration)
     # !SECTION
+# !SECTION - main program

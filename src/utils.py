@@ -3,6 +3,7 @@ from datetime import datetime
 import os
 import json
 import pickle
+import math
 import numpy as np
 from copy import deepcopy
 import pymunk as pm
@@ -40,34 +41,46 @@ def setup_task_args(args, tnm=None):
                         if j.color in [(255, 0, 0, 255), (0, 0, 255, 255)]
     }
     args.sequence_sample_poss = {}
+    args.sequence_obj_pos = {}
     args.movable_objects = list(args.movable_obj_dict)
     args.tool_objects = list(args.tp0.toolNames)
     path_dict0, _, _ = args.tp0.observeStatePath()
     args.dist0 = min(args.tp0.world.distanceToGoalContainer((path_dict0[obj][i][:2])) 
         for obj in path_dict0 for i in range(len(path_dict0[obj])) 
         if args.tp0.objects[obj].color==(255, 0, 0, 255))
-    args.ext_sampler = ExtrinsicSampler(args.btr0, path_dict0)
+    args.ext_sampler = ExtrinsicSampler(args.tp0, args.btr0, path_dict0)
 ##############################################
 #
 # Sampler
 #
 ##############################################
 
-def extrinsics_sampler(args, sample_type, strategy):
-    weights = [ math.e**(-strategy.obj_count[m]*args.eps)
-        for m in args.movable_objects
-    ]
-    sample_obj = choices(args.movable_objects, weights=weights, k=1)[0]
+def extrinsics_sampler(args, sample_type, strategy, sample_objs= None):
+    if sample_objs:
+        weights = [ math.e**(-strategy.obj_count[m]*args.eps)
+            for m in sample_objs
+        ]
+        sample_obj = choices(sample_objs, weights=weights, k=1)[0]
+    else:
+        weights = [ math.e**(-strategy.obj_count[m]*args.eps)
+            for m in args.movable_objects
+        ]
+        sample_obj = choices(args.movable_objects, weights=weights, k=1)[0]
     if sample_type == 'pos':
         btr = args.ext_sampler.sample_pos(sample_obj)
     elif sample_type == 'vel': # set velocity
         btr = args.ext_sampler.sample_vel(sample_obj)
     elif sample_type == 'ang':
         btr = args.ext_sampler.sample_ang(sample_obj)
+    elif sample_type == 'CF':
+        btr = args.ext_sampler.sample_CF(sample_obj)
     tp = ToolPicker(btr)
-    path_dict, collisions, success, _ = tp.runStatePath(noisy=args.noisy)
+
     sample_ext = [*tp.objects[sample_obj].position, tp.objects[sample_obj].rotation, *tp.objects[sample_obj].velocity]  
     ext_info = sample_ext
+    path_dict, collisions, success, t = tp.runStatePath(
+        noisy=args.noisy
+    )
     path_info = path_dict, collisions, success
     return sample_obj, sample_ext, ext_info, path_info
 
@@ -126,9 +139,9 @@ def sample_exttype(args, strategy_graph):
         k=1)[0]
     return sample_ext
 
-def sample_ext_by_type(args, sample_type, strategy):
-    if sample_type in ['pos', 'vel', 'ang']: # fixed pos, smaple from path
-        result = extrinsics_sampler(args, sample_type, strategy)
+def sample_ext_by_type(args, sample_type, strategy, sample_objs):
+    if sample_type in ['pos', 'vel', 'ang', 'CF']: # fixed pos, smaple from path
+        result = extrinsics_sampler(args, sample_type, strategy, sample_objs)
     elif sample_type == 'kick':
         result = kick_sampler(args, strategy)
     elif sample_type == 'tool':
@@ -143,6 +156,23 @@ def sample_ext_by_type(args, sample_type, strategy):
 ##############################################
 
 ##############################################
+
+def draw_policies(tp, policies, img_name):
+    pg.display.set_mode((10,10))
+    worlddict = tp._worlddict
+    sc = drawWorldWithTools(tp, worlddict=worlddict)
+    colors = [(255,0,255), (255,255,0), (0,255,255)]
+    for i in range(3):
+        surface_width = 4 * policies.params[f"obj{i+1}_sigma1"].detach().numpy()
+        
+        surface_height = 4 * policies.params[f"obj{i+1}_sigma2"].detach().numpy()
+        ellipse_surface = get_ellipse_surface(surface_width, surface_height, colors[i])
+        mean1 = policies.params[f"obj{i+1}_mu1"]
+        mean2 = policies.params[f"obj{i+1}_mu2"]
+        sc.blit(ellipse_surface.convert_alpha(), (int(mean1-surface_width/2), int(600-mean2-surface_height/2)))
+
+    img = sc.convert_alpha()
+    pg.image.save(img, img_name)
 
 def draw_gradient_samples(tp, samples, img_name):
     pg.display.set_mode((10,10))
@@ -179,6 +209,53 @@ def draw_samples(tp, samples, task, img_name):
             vx, vy = s[3]/5, s[4]/5
             pg.draw.circle(sc, col, [x, y], 5)
             pg.draw.line(sc, col, [x, y], [x+vx, y-vy], 2)
+        img = sc.convert_alpha()
+        pg.image.save(img, img_name)
+
+def get_ellipse_surface(surface_width, surface_height, col):
+    ellipse_surface = pg.Surface((surface_width, surface_height), pg.SRCALPHA)
+    rect = pg.Rect(0, 0, surface_width, surface_height)
+
+    # ellipse_surface = pg.Surface((rect[2], rect[3]), pg.SRCALPHA)
+    for y in range(int(surface_height)):
+        for x in range(int(surface_width)):
+            # 椭圆方程 (x/a)^2 + (y/b)^2 <= 1
+            if ((x - surface_width / 2) ** 2) / (surface_width / 2) ** 2 + ((y - surface_height / 2) ** 2) / (surface_height / 2) ** 2 <= 1:
+                # distance_to_center = np.sqrt((x - surface_width / 2) ** 2 + (y - surface_height / 2) ** 2)
+                # max_distance = np.sqrt((surface_width / 2) ** 2 + (surface_height / 2) ** 2)
+                distance_to_center = np.sqrt((x-surface_width/2)**2/(surface_width/2)**2 + (y-surface_height/2)**2/(surface_height/2)**2)
+                max_distance = 1
+                factor = distance_to_center / max_distance
+                color = (col[0], col[1], col[2], int((1-factor)*232))
+                ellipse_surface.set_at((x, y), color)
+    return ellipse_surface
+
+def draw_ellipse(tp, samples, task, img_name):
+    pg.display.set_mode((10,10))
+    worlddict = tp._worlddict
+    sc = drawWorldWithTools(tp, worlddict=worlddict)
+    if task == 'compare_tool_target':
+        colors = [(255, 128, 128), (128, 255, 128), (255, 0, 0), (0, 255, 0)]
+    elif task == 'tool_target':
+        colors = [(255, 0, 0), (0, 255, 0)]
+    elif task == 'single':
+        colors = [(255, 0, 0)]
+    else:
+        gradient = 255//len(samples)
+        colors = [(255-i*gradient, 0, i*gradient) for i in range(len(samples)-1)] + [(0,255,0)]
+    
+    for col, sample in zip(colors, samples):
+        mean1 = np.mean([s[0] for s in sample], axis=0)
+        # cov1 = np.cov([s[0] for s in sample], rowvar=False)
+        var1 = np.std([s[0] for s in sample], axis=0)
+        mean2 = np.mean([s[1] for s in sample], axis=0)
+        # cov2 = np.cov([s[1] for s in sample], rowvar=False)
+        var2 = np.std([s[1] for s in sample], axis=0)
+        surface_width = int(var1*4)
+        surface_height = int(var2*4)
+        ellipse_surface = get_ellipse_surface(surface_width, surface_height, col)
+
+        sc.blit(ellipse_surface.convert_alpha(), (mean1-surface_width/2, 600-mean2-surface_height/2))
         img = sc.convert_alpha()
         pg.image.save(img, img_name)
 
@@ -228,7 +305,7 @@ def get_prior_catapult(obj_dict):
     y = randint(y0+20,600)
     return (x,y)
 
-def calculate_reward(args, tp, path_dict):
+def calculate_reward(args, path_dict):
     if not path_dict:
         return 0
     dist0 = args.dist0
@@ -236,8 +313,8 @@ def calculate_reward(args, tp, path_dict):
     for obj in path_dict:
         if obj == 'PLACED': continue
         for i in range(len(path_dict[obj])):
-            if tp.objects[obj].color == (255, 0, 0, 255):
-                dist_tmp = tp.world.distanceToGoalContainer((path_dict[obj][i][:2]))
+            if args.tp0.objects[obj].color == (255, 0, 0, 255):
+                dist_tmp = args.tp0.world.distanceToGoalContainer((path_dict[obj][i][:2]))
                 if dist > dist_tmp:
                     dist = dist_tmp
                 # reward = -(dist/dist0-0.5)*2
@@ -286,7 +363,8 @@ def standardize_collisions(collisions):
     return collisions
 
 class ExtrinsicSampler():
-    def __init__(self, btr, path_dict):
+    def __init__(self, tp, btr, path_dict):
+        self._tp = tp
         self._btr = btr
         self.path_dict = path_dict
     
@@ -312,6 +390,23 @@ class ExtrinsicSampler():
         rand_ang = randint(1,50)*10*2*np.pi
         btr = deepcopy(self._btr)
         btr['world']['objects'][sample_obj]['angular_velocity'] = rand_ang
+        return btr
+
+    def sample_CF(self, sample_obj):
+        rand_rad = random()*2*np.pi
+        rand_pos_rad = random()*2*np.pi
+        sample_pose = choice(self.path_dict[sample_obj]) # sample from intial path
+        pos0, rot0 = sample_pose[0:2], sample_pose[2]
+        btr = deepcopy(self._btr)
+        pos0 = self._tp.objects[sample_obj].getPos()
+        rand_scale = randint(0,10)
+        btr['world']['objects'][sample_obj]['position'] = (pos0[0] + np.cos(rand_pos_rad) * rand_scale, pos0[1] + np.sin(rand_pos_rad) * rand_scale)
+        rand_scale = randint(1,60)*10
+        velocity = [np.cos(rand_rad) * rand_scale,  np.sin(rand_rad) * rand_scale]
+        btr['world']['objects'][sample_obj]['velocity'] = velocity
+        btr['world']['objects'][sample_obj]['rotation'] = (rot0 + (random()-0.5)*0.1)
+        tp = ToolPicker(btr)
+        tp
         return btr
 
 def node_match(node1, node2):
