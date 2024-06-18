@@ -143,6 +143,7 @@ def noisifyWorld(gameworld, noise_position_static = 5., noise_position_moving = 
     wall_names = ["_LeftWall","_BottomWall","_RightWall","_TopWall"]
 
     # With static noise, group all touching objects and move them together
+    # NOTE - reduce the noise of position (size = 2 -> size = 1)
     if noise_position_static > 0:
         # Make object groups (things that move together because they are touching)
         obj_groups = []
@@ -165,7 +166,7 @@ def noisifyWorld(gameworld, noise_position_static = 5., noise_position_moving = 
 
         # Now that the space is segmented, move all static items together
         for og in obj_groups:
-            pos_change = noise_position_static*norm.rvs(size = 2)
+            pos_change = noise_position_static*norm.rvs(size = 1)
             for o in og:
                 if o.isStatic():
                     _move_static(o, pos_change, w._cpSpace)
@@ -206,7 +207,7 @@ def noisifyWorld(gameworld, noise_position_static = 5., noise_position_moving = 
 
             # Randomly perturb everything
             for o in free_obj:
-                o.position += noise_position_moving*norm.rvs(size = 2)
+                o.position += noise_position_moving*norm.rvs(size = 1)
 
             # Take tiny steps to resolve overlaps
             for i in range(10):

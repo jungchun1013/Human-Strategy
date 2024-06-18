@@ -15,7 +15,7 @@ from pyGameWorld import ToolPicker
 # import pymunk as pm
 from pyGameWorld.helpers import centroidForPoly
 from pyGameWorld.viewer import demonstrateWorld, demonstrateTPPlacement
-from src.strategy import StrategyGraph, merge_graphs, merge_mechanisms, get_obj_type, train_mechanism
+from src.strategy import StrategyGraph, merge_graphs, merge_mechanisms, get_obj_type, train_mechanism, MechanismSet, build_graph_from_mechanism_seq
 from src.utils import setup_experiment_dir, setup_task_args
 from src.utils import get_prior_SSUP
 from src.utils import draw_path, calculate_reward, draw_samples, draw_ellipse, draw_policies
@@ -25,6 +25,7 @@ from src.utils import sample_ext_by_type
 from src.gaussian_policy import initialize_policy, plot_policies
 import src.config as config
 from src.UCB import UCB
+from src.MCTS import *
 
 #############################################################
 #                                                           #
@@ -211,6 +212,36 @@ def sample_for_catapultalt1(strat_graph, idx=0):
     tool = choice(list(args.tp0.toolNames))
     return tool, obj_pos
 
+def sample_for_catapultaltmod(strat_graph, idx=0):
+    '''sample the placement for Catapult assume the model is known
+    
+    Args:
+        strat_graph (StrategyGraph): strategy graph
+        idx (int): index
+    Returns:
+        tool (str): tool name
+        obj_pos (list): object placement position
+    '''
+
+    # NOTE - keyball
+    composition_config = []
+    composition_config.append({'cur_nd': 'Goal', 'pre_nd': 'Ball','targ_init': 'Goal',  'tool_init': 'KeyBall', 'strat_name': "Launch_v2", 'strat_nodes': ['PLACED', 'Ball2', 'Ball', 'Goal']})
+    # composition_config.append({'cur_nd': 'Ball', 'pre_nd': 'Ball2', 'tool_init': 'CataBall', 'targ_init': 'KeyBall', 'strat_name': "Launch_v2"})
+    # composition_config.append({'cur_nd': 'Goal', 'pre_nd': 'Ball', 'tool_init': 'CataBall', 'targ_init': 'KeyBall', 'strat_name': "Funnel"})
+    composition_config.append({'cur_nd': 'Ball2', 'pre_nd': 'Ball', 'targ_init': 'KeyBall2','tool_init': 'KeyBall', 'strat_name': "SlopeR_v2", 'strat_nodes': ['PLACED', 'Ball', 'Ball2', 'Goal']})
+    composition_config.append({'cur_nd': 'Ball', 'pre_nd': 'CataBall', 'tool_init': 'CataBall', 'targ_init': 'KeyBall', 'strat_name': "Funnel", 'strat_nodes': ['CataBall', 'Ball', 'Goal']})
+    composition_config.append({'cur_nd': 'Ball', 'pre_nd': 'Catapult', 'tool_init': 'Lever', 'targ_init': 'CataBall', 'strat_name': "Catapult", 'strat_nodes': ['PLACED', 'Catapult', 'Ball', 'Goal']})
+    composition_config.append({'cur_nd': 'Catapult', 'pre_nd': 'PLACED', 'tool_init': 'PLACED', 'targ_init': 'Lever', 'strat_name': "Catapult", 'strat_nodes': ['PLACED', 'Catapult', 'Ball', 'Goal']})
+    node_sequence = ['Goal',  'KeyBall', 'CataBall', 'Lever', 'PLACED']
+
+    obj_pos = sample_for_specific_task(composition_config, strat_graph)
+    save_img_data(node_sequence, idx)
+
+
+    tool = choice(list(args.tp0.toolNames))
+    return tool, obj_pos
+
+
 def sample_for_catapultalt(strat_graph, idx=0):
     '''sample the placement for Catapult assume the model is known
     
@@ -238,7 +269,6 @@ def sample_for_catapultalt(strat_graph, idx=0):
 
     tool = choice(list(args.tp0.toolNames))
     return tool, obj_pos
-
 
 def sample_for_chaining(strat_graph, idx=0):
     '''sample the placement for Catapult assume the model is known
@@ -468,6 +498,9 @@ def build_strategy_graph(task_series, strat_graph=None, start_tool = 'PLACED'):
     else:
         strategy_graph = StrategyGraph(task_series, [start_tool])
     sim_count = 0
+    img_name = os.path.join(args.dir_name,
+        'collision.png'
+    )
     while sim_count < args.num_demos: # loop based on number of sim in PE
         args.btr = deepcopy(args.btr0)
         args.tp = ToolPicker(args.btr0)
@@ -501,11 +534,7 @@ def build_strategy_graph(task_series, strat_graph=None, start_tool = 'PLACED'):
                         sample_objs = sample_objs
                     )
             path_dict, collisions, success = path_info
-            if collisions:
-                img_name = os.path.join(args.dir_name,
-                    'collision.png'
-                )
-                draw_path(args.tp0, path_dict, img_name, sample_ext[0:2])
+
             if success:
                 # sim_count += 1
                 args.sim_count = sim_count
@@ -555,6 +584,8 @@ def test(sample_obj, sample_pos, noisy=False):
     return (path_dict, collisions, success)
 
 def sample(strat_seq=None):
+    sample_object, sample_position = sample_from_strategy_graph(strategy_graph)
+    return sample_object, sample_position
     if 'CatapultAlt' in args.tnm:
         if strat_seq == ['PLACED', 'Lever','CataBall', 'KeyBall', 'Goal']:
             sample_object, sample_position = sample_for_catapultalt1(strategy_graph)
@@ -920,6 +951,7 @@ def SSUP2(policies, strategies):
             break
     sample_pos = [sample_pos[0], sample_pos[1], 0, 0, 0]
     return sample_obj, sample_pos, path_info
+
 # SECTION - main program
 if __name__ == "__main__":
     # SECTION - parse argument from command and config
@@ -1053,6 +1085,9 @@ if __name__ == "__main__":
                 strategy_graph = build_strategy_graph(args.task2series[args.tnm], start_tool=start_tool)
                 strategy_graph.merge_graph(args)
                 strategy_graph.train(args)
+                # strategy_graph = merge_graphs(args, [strategy_graph])
+
+            
             # !SECTION - learning/training
             # SECTION - adaptation/update
             if args.update:
@@ -1088,6 +1123,23 @@ if __name__ == "__main__":
             if args.SSUP:
                 tnm = args.tnm
                 setup_task_args(args, tnm)
+                
+                
+                mechanisms = MechanismSet(args, strategy_graph)
+                mechanism_seq = mechanisms.sample_strategy(args)
+                start_tool = config.task_config[args.tsnm]['start_tool']
+                build_graph_from_mechanism_seq(mechanism_seq, args.task2series[args.tnm], start_tool)
+                strategy_MCTS = StrategyGraphMCTS(1000, args)
+                StrategyGraphState.set_mechanisms(mechanisms)
+                for i in range(10):
+                    action = strategy_MCTS.search()
+                    print('-',action.state.graph.nodes())
+                
+                quit()
+
+                
+
+                # TODO - design strategy graph from search
                 # GPR
                 if args.UCB:
                     # TODO - sample strategy

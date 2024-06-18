@@ -3,7 +3,7 @@ from pyGameWorld.viewer import demonstrateTPPlacement, drawWorldWithTools, demon
 import json
 import pygame as pg
 import os
-from src.utils import get_prior_SSUP, draw_samples, calculate_reward, draw_ellipse
+from src.utils import get_prior_SSUP, draw_samples, calculate_reward, draw_ellipse, load_strategy_graph
 from random import choice, randint
 
 def test():
@@ -142,7 +142,24 @@ def draw_path(tnm):
       sc = drawPathSingleImageWithTools2(tp, path_dict, col_idx, with_tools=True)
       img = sc.convert_alpha()
       pg.image.save(img, 'test.png')
+def modify_level(tnm):
+  with open(json_dir+tnm+'.json','r') as f:
+    btr = json.load(f)
   
+  for obj in btr['world']['objects']:
+    if obj[0] != '_':
+      if btr['world']['objects'][obj]['type'] == 'Poly':
+        btr['world']['objects'][obj]['vertices'] = [[v[0], v[1]+100] for v in btr['world']['objects'][obj]['vertices'] ]
+      elif btr['world']['objects'][obj]['type'] == 'Ball':
+        btr['world']['objects'][obj]['position'] = [btr['world']['objects'][obj]['position'][0], btr['world']['objects'][obj]['position'][1]+100]
+      elif btr['world']['objects'][obj]['type'] in ['Poly', 'Container']:
+        btr['world']['objects'][obj]['points'] = [[v[0], v[1]+100] for v in btr['world']['objects'][obj]['points']]
+
+
+  
+  with open(json_dir+tnm+'_mod.json','w') as f:
+    json.dump(btr, f)
+
 def random_sample(tnm, ):
   # Load level in from json file
   # For levels used in experiment, check out Level_Definitions/
@@ -158,7 +175,7 @@ def random_sample(tnm, ):
   for x in range(1200):
     # sample_pos = [randint(10, 100), randint(300, 550)]
     # sample_pos = choice([[randint(30, 100), randint(450, 570)], [randint(480, 550), randint(350, 450)]])
-    sample_pos = [randint(250, 300), randint(540, 580)]
+    # sample_pos = [randint(250, 300), randint(540, 580)]
     sample_pos = choice([[randint(240, 320), randint(530, 580)], [randint(460, 550), randint(500, 580)]])
     
     sample_obj = choice(list(tp.toolNames))
@@ -184,11 +201,13 @@ def random_sample(tnm, ):
   sc = drawWorldWithTools(tp)
   pg.image.save(sc, tnm+'.png')
 
+
 if __name__ == "__main__":
   json_dir = "./environment/Trials/Strategy/"
-  # generate_all_env()
-  # random_sample("MultiSlope_v2")
+  # modify_level("CatapultAlt")
+  generate_all_env()
+  # random_sample("CatapultAlt_mod")
   # random_sample("Chaining")
   # random_sample("CatapultAlt_1")
-  draw_path("CatapultAlt")
+  # draw_path("CatapultAlt")
   # random_sample("CatapultAlt_2")

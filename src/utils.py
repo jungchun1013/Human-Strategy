@@ -10,6 +10,7 @@ import pymunk as pm
 import pygame as pg
 from pyGameWorld import PGWorld, ToolPicker, loadFromDict
 from pyGameWorld.viewer import *
+from pyGameWorld.viewer import drawPathSingleImageWithTools2
 from pyGameWorld.jsrun import *
 from pyGameWorld.helpers import *
 
@@ -37,6 +38,7 @@ def setup_task_args(args, tnm=None):
     with open(args.json_dir + tnm + '.json','r') as f:
         args.btr0 = json.load(f)
     args.tp0 = ToolPicker(args.btr0)
+
     args.movable_obj_dict = {i:j for i, j in args.tp0.objects.items()
                         if j.color in [(255, 0, 0, 255), (0, 0, 255, 255)]
     }
@@ -44,11 +46,14 @@ def setup_task_args(args, tnm=None):
     args.sequence_obj_pos = {}
     args.movable_objects = list(args.movable_obj_dict)
     args.tool_objects = list(args.tp0.toolNames)
-    path_dict0, _, _ = args.tp0.observeStatePath()
-    args.dist0 = min(args.tp0.world.distanceToGoalContainer((path_dict0[obj][i][:2])) 
-        for obj in path_dict0 for i in range(len(path_dict0[obj])) 
+    # path_dict0, _, _ = args.tp0.observeStatePath()
+    args.path_dict0, args.collisions0, _, _ = args.tp0.runStatePath()
+    args.tp0
+
+    args.dist0 = min(args.tp0.world.distanceToGoalContainer((args.path_dict0[obj][i][:2])) 
+        for obj in args.path_dict0 for i in range(len(args.path_dict0[obj])) 
         if args.tp0.objects[obj].color==(255, 0, 0, 255))
-    args.ext_sampler = ExtrinsicSampler(args.tp0, args.btr0, path_dict0)
+    args.ext_sampler = ExtrinsicSampler(args.tp0, args.btr0, args.path_dict0)
 ##############################################
 #
 # Sampler
@@ -263,7 +268,8 @@ def draw_ellipse(tp, samples, task, img_name):
 def draw_path(tp, path_dict, img_name, tool_pos=None):
     if not path_dict: return
     pg.display.set_mode((10,10))
-    sc = drawPathSingleImageWithTools(tp, path_dict)
+    # sc = drawPathSingleImageWithTools(tp, path_dict)
+    sc = drawPathSingleImageWithTools2(tp, path_dict, [0], with_tools=True)
     if tool_pos is not None:
         tool_pos = [tool_pos[0], 600-tool_pos[1]]
         pg.draw.circle(sc, (0,0,255), tool_pos, 5)
