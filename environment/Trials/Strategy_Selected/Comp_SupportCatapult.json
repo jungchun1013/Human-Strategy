@@ -1,0 +1,20 @@
+{"world": 
+    {"dims": [600, 600], "bts": 0.01, "gravity": 200, 
+    "defaults": {"density": 1, "friction": 0.5, "elasticity": 0.5, "color": "black", "bk_color": "white"}, 
+    "objects": {
+        "_LeftWall": {"type": "Poly", "color": "black", "density": 0, "vertices": [[-1, -1], [-1, 601], [1, 601], [1, -1]]}, 
+        "_BottomWall": {"type": "Poly", "color": "black", "density": 0, "vertices": [[-1, -1], [-1, 1], [601, 1], [601, -1]]}, 
+        "_RightWall": {"type": "Poly", "color": "black", "density": 0, "vertices": [[599, -1], [599, 601], [601, 601], [601, -1]]}, 
+        "_TopWall": {"type": "Poly", "color": "black", "density": 0, "vertices": [[-1, 599], [-1, 601], [601, 601], [601, 599]]}, 
+        "Slope": {"type": "Poly", "color": "black", "density": 0, "vertices": [[0, 380], [0, 480], [100, 460], [100, 380]]},  
+        "Buttom": {"type": "Poly", "color": "black", "density": 0, "vertices": [[100, 380], [100, 390], [210, 390], [210, 380]]},   
+        "Floor": {"type": "Poly", "color": "black", "density": 0, "vertices": [[200, 380], [200, 440], [230, 440], [230, 380]]},  
+        "Strut": {"type": "Poly", "color": "black", "density": 0, "vertices": [[520, 0], [520, 72], [550, 72], [550, 0]]}, 
+        "Cradle": {"type": "Poly", "color": "black", "density": 0, "vertices": [[430, 0], [430, 72], [450, 72], [450, 0]]}, 
+        "Goal": {"type": "Container", "color": "black", "density": 0, "points": [[240, 100], [240, 0], [140, 0], [140, 100]], "width": 5, "innerColor": "green", "outerColor": "black"}, 
+        "Catapult": {"type": "Compound", "color": "blue", "density": 1, "polys": [[[570, 72], [570, 87], [585, 87], [585, 72]], [[570, 87], [570, 112], [585, 112], [585, 87]], [[335, 72], [335, 87], [570, 87], [570, 72]]]}, 
+        "CataBall": {"type": "Ball", "color": "red", "density": 1, "position": [40, 540], "radius": 30},
+        "Ball": {"type": "Ball", "color": "red", "density": 1, "position": [550, 100], "radius": 15}
+        }, 
+        "blocks": {"Blocker":{"color":"grey","vertices":[[300,0],[300,600],[400,600],[400,0]]}
+        }, "constraints": {}, "gcond": {"type": "SpecificInGoal", "goal": "Goal", "obj": "Ball", "duration": 1}}, "tools": {"obj1": [[[-30, 20], [30, 20], [0, -20]]], "obj2": [[[-24, -30], [-24, 30], [24, 30], [24, -30]]], "obj3": [[[-40, -10], [-40, 10], [40, 10], [40, -10]]]}, "toolNames": ["obj1", "obj2", "obj3"], "sucText": "Get the red ball into the green goal"}

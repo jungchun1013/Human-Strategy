@@ -1,5 +1,5 @@
 from pyGameWorld import PGWorld, ToolPicker
-from pyGameWorld.viewer import demonstrateTPPlacement, drawWorldWithTools, demonstrateWorld, drawPathSingleImageWithTools, drawPathSingleImageWithTools2
+from pyGameWorld.viewer import demonstrateTPPlacement, drawWorldWithTools, demonstrateWorld, drawPathSingleImageWithTools, drawPathSingleImageWithTools2, makeImageArray
 import json
 import pygame as pg
 import os
@@ -105,6 +105,7 @@ def generate_all_env():
 
   for filename in os.listdir(json_dir):
       if filename.endswith('.json'):
+          print(filename)
           file_path = os.path.join(json_dir, filename)
           with open(file_path, 'r') as f:
               btr = json.load(f)
@@ -125,13 +126,15 @@ def draw_path(tnm):
   with open(json_dir+tnm+'.json','r') as f:
     btr = json.load(f)
     tp = ToolPicker(btr)
-  path_dict, collisions, success, time_to_success, w = tp.runStatePath('obj2', (270, 550), returnDict=True)
+  path_dict, collisions, success, time_to_success, w = tp.runStatePath('obj2', (280, 550), returnDict=True)
   tp.set_worlddict(w)
+  #  520, 458
   
   for c in collisions:
     print(c[0:4])
   # col_idx = [0, 19, 22, 62, 68, 83]
-  col_idx = [0, 21]
+  # col_idx = [0, len(path_dict['KeyBall'])-1]
+  col_idx = [19, 21]
   for onm, p in path_dict.items():
     # path_dict[onm] = p[0:col_idx[-1]+1]
     path_dict[onm] = p[col_idx[0]:col_idx[-1]+1]
@@ -139,21 +142,22 @@ def draw_path(tnm):
 
   if path_dict:
       pg.display.set_mode((10,10))
-      sc = drawPathSingleImageWithTools2(tp, path_dict, col_idx, with_tools=True)
+      sc = drawPathSingleImageWithTools2(tp, path_dict, col_idx)
       img = sc.convert_alpha()
       pg.image.save(img, 'test.png')
-def modify_level(tnm):
+
+def modify_level(tnm, h, w):
   with open(json_dir+tnm+'.json','r') as f:
     btr = json.load(f)
   
   for obj in btr['world']['objects']:
     if obj[0] != '_':
       if btr['world']['objects'][obj]['type'] == 'Poly':
-        btr['world']['objects'][obj]['vertices'] = [[v[0], v[1]+100] for v in btr['world']['objects'][obj]['vertices'] ]
+        btr['world']['objects'][obj]['vertices'] = [[v[0]+h, v[1]+w] for v in btr['world']['objects'][obj]['vertices'] ]
       elif btr['world']['objects'][obj]['type'] == 'Ball':
-        btr['world']['objects'][obj]['position'] = [btr['world']['objects'][obj]['position'][0], btr['world']['objects'][obj]['position'][1]+100]
+        btr['world']['objects'][obj]['position'] = [btr['world']['objects'][obj]['position'][0]+h, btr['world']['objects'][obj]['position'][1]+w]
       elif btr['world']['objects'][obj]['type'] in ['Poly', 'Container']:
-        btr['world']['objects'][obj]['points'] = [[v[0], v[1]+100] for v in btr['world']['objects'][obj]['points']]
+        btr['world']['objects'][obj]['points'] = [[v[0]+h, v[1]+w] for v in btr['world']['objects'][obj]['points']]
 
 
   
@@ -172,13 +176,15 @@ def random_sample(tnm, ):
   movable = {i:j for i, j in tp.objects.items()
                           if j.color in [(255, 0, 0, 255), (0, 0, 255, 255)]
       }
-  for x in range(1200):
+  for x in range(1800):
     # sample_pos = [randint(10, 100), randint(300, 550)]
     # sample_pos = choice([[randint(30, 100), randint(450, 570)], [randint(480, 550), randint(350, 450)]])
     # sample_pos = [randint(250, 300), randint(540, 580)]
-    sample_pos = choice([[randint(240, 320), randint(530, 580)], [randint(460, 550), randint(500, 580)]])
+    # sample_pos = choice([[randint(240, 320), randint(530, 580)], [randint(460, 550), randint(500, 580)]])
+    sample_pos = choice([[randint(220,430), randint(46, 50)]])
     
-    sample_obj = choice(list(tp.toolNames))
+    # sample_obj = choice(list(tp.toolNames))
+    sample_obj = 'obj2'
     path_dict, collisions, success, _ = tp.runStatePath(
         toolname=sample_obj,
         position=sample_pos,
@@ -186,6 +192,7 @@ def random_sample(tnm, ):
     )
     path_info = path_dict, collisions, success
     if path_info[2] == True:
+      print(sample_pos)
       img_poss.append(sample_pos+[0,0,0])
     else:
       img_poss2.append(sample_pos+[0,0,0])
@@ -202,12 +209,48 @@ def random_sample(tnm, ):
   pg.image.save(sc, tnm+'.png')
 
 
+def save_image_seq(tnm):
+  # run environment and save sequence of images
+  
+  with open(json_dir + tnm + '.json', 'r') as f:
+      btr = json.load(f)
+      tp = ToolPicker(btr)
+  
+  # Specific placement for the task
+  pos = (80, 400)  # Example position, modify as needed
+  toolname = 'obj1'
+  # path_dict, collisions, success, _ = tp.runStatePath(toolname='obj2', position=pos, noisy=False)
+  pth, ocm, etime, wd = tp.observeFullPlacementPath(toolname, pos, 20, returnDict=True)
+  vid_dir = "./physic-VLM-dataset"
+  if not os.path.exists(f'{vid_dir}/{tnm}'):
+    os.makedirs(f'{vid_dir}/{tnm}')
+  else:
+    for filename in os.listdir(f'{vid_dir}/{tnm}'):
+      if filename.endswith('.png'):
+        os.remove(f'{vid_dir}/{tnm}/{filename}')
+  images = makeImageArray(wd, pth, sample_ratio=1)
+  for i, img in enumerate(images):
+    pg.image.save(img, f'{vid_dir}/{tnm}/frame_{i}.png')
+    
+    
 if __name__ == "__main__":
   json_dir = "./environment/Trials/Strategy/"
+  with open(json_dir + "CatapultAlt.json", 'r') as f:
+    btr = json.load(f)
+    tp = ToolPicker(btr)
+  path_dict, collisions, success, t = tp.runStatePath(
+        'obj2',
+        (270,540),
+        noisy=True
+  )
+  for c in collisions:
+    print(c[0:4])
   # modify_level("CatapultAlt")
-  generate_all_env()
+  # save_image_seq("Launch_v2")
+  # random_sample("New_Catapult")
   # random_sample("CatapultAlt_mod")
-  # random_sample("Chaining")
+  # modify_level('CompCatapultAlt600', 50, 100)
+  # draw_path("CatapultAlt")
   # random_sample("CatapultAlt_1")
   # draw_path("CatapultAlt")
   # random_sample("CatapultAlt_2")

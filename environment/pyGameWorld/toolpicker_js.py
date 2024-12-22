@@ -176,6 +176,7 @@ class ToolPicker(object):
         self.wts = worldTimestep
         if tnm is not None:
             self._tnm = tnm
+        # TODO - tools can be static or dynamic
         self._tools = gamedict['tools']
         self._toolNames = list(self._tools.keys())
         self.t = 0
@@ -212,7 +213,12 @@ class ToolPicker(object):
 
     def drawTool(self, tool):
         tool_to_draw = self._tools[self._toolNames[tool]]
-        img = drawTool(tool_to_draw, color=(0,0,255), toolbox_size=(90, 90))
+        if type(tool_to_draw) is dict:
+            tool_to_draw = tool_to_draw['points']
+            color = tool_to_draw['color']
+        else:
+            color = (0,0,255)
+        img = drawTool(tool_to_draw, color=color, toolbox_size=(90, 90))
         return img
 
     def checkPlacementCollide(self, toolname, position):

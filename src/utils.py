@@ -29,12 +29,14 @@ def setup_experiment_dir(args):
     args.main_dir_name = os.path.join('data', date, args.exp_name)
     os.makedirs(args.main_dir_name)
 
-def setup_task_args(args, tnm=None):
+def setup_task_args(args, tnm=None, testing=False):
     if not tnm:
-        args.noisy = not args.deterministic
-        args.get_prior = set_prior_type(args.algorithm)
-        # args.trial_stats = []
         tnm = args.tnm
+    if testing:
+        args.noisy = False
+    else:
+        args.noisy = not args.deterministic
+    args.get_prior = set_prior_type(args.algorithm)
     with open(args.json_dir + tnm + '.json','r') as f:
         args.btr0 = json.load(f)
     args.tp0 = ToolPicker(args.btr0)
@@ -214,6 +216,17 @@ def draw_samples(tp, samples, task, img_name):
             vx, vy = s[3]/5, s[4]/5
             pg.draw.circle(sc, col, [x, y], 5)
             pg.draw.line(sc, col, [x, y], [x+vx, y-vy], 2)
+        img = sc.convert_alpha()
+        pg.image.save(img, img_name)
+
+def draw_data(tp, data_points, img_name, group_colors, group_sizes):
+    pg.display.set_mode((10,10))
+    worlddict = tp._worlddict
+    sc = drawWorldWithTools(tp, worlddict=worlddict)
+    for s, color, size in zip(data_points, group_colors, group_sizes):
+        x, y = s[0], 600-s[1]
+        pg.draw.circle(sc, color, [x, y], size)
+
         img = sc.convert_alpha()
         pg.image.save(img, img_name)
 
@@ -467,7 +480,7 @@ def save_strategy_graph(strategy_graph, file_name='strategy_graph.pkl'):
 #             0,
 #             random()*100-50,
 #             random()*100-50]]
-#         img_name = os.path.join(args.dir_name,
+#         img_name = os.path.join(args.trial_dir_name,
 #             'Gen_test_'+cur_nd+'.png'
 #         )
 #         print(cur_nd, int(sample_poss[0][0]), int(sample_poss[0][1]))
@@ -482,7 +495,7 @@ def save_strategy_graph(strategy_graph, file_name='strategy_graph.pkl'):
 #             for sublist in np.transpose(arr, (0, 2, 1))
 #             for item in sublist]
 #         img_poss = [[obj_pos[0]+s[0],obj_pos[1]+s[1],s[2],s[3],s[4]] for s in sample_poss]
-#         img_name = os.path.join(args.dir_name,
+#         img_name = os.path.join(args.trial_dir_name,
 #             'Gen_test_'+cur_nd+'1.png'
 #         )
 #         draw_gp_samples(args.tp0, [img_poss, [obj_pos]], 'tool_target', img_name)
@@ -502,7 +515,7 @@ def save_strategy_graph(strategy_graph, file_name='strategy_graph.pkl'):
 #             for item in sublist]
 #         img_poss = [[obj_pos[0] + s[0], obj_pos[1] + s[1], s[2], s[3], s[4]]
 #             for s in sample_poss]
-#         img_name = os.path.join(args.dir_name,
+#         img_name = os.path.join(args.trial_dir_name,
 #             'Gen_test_'+cur_nd+'x.png'
 #         )
 #         draw_gp_samples(args.tp0, [img_poss, [obj_pos]], img_name)
@@ -521,7 +534,7 @@ def save_strategy_graph(strategy_graph, file_name='strategy_graph.pkl'):
 #         sample_pos = sample_poss[0]
 #         print(cur_nd, sample_pos)
 #         img_poss = [[obj_pos[0]+s[0],obj_pos[1]+s[1],s[2],s[3],s[4]] for s in sample_poss]
-#         img_name = os.path.join(args.dir_name,
+#         img_name = os.path.join(args.trial_dir_name,
 #             'Gen_test_'+cur_nd+'.png'
 #         )
 #         draw_gp_samples(args.tp0, [img_poss, [sample_poss[0]]], img_name)
@@ -544,7 +557,7 @@ def save_strategy_graph(strategy_graph, file_name='strategy_graph.pkl'):
 #             logging.info('GPR Simulate: %d %d %d, %s (%d %d) %s %f',
 #                 action_count, sim_count, sample_count, sample_obj,
 #                 sample_pos[0], sample_pos[1], success, reward)
-#             img_name = os.path.join(args.dir_name,
+#             img_name = os.path.join(args.trial_dir_name,
 #                 'sample_from_GPR_'+str(sim_count)+'_'+args.tnm+'.png'
 #             )
 #             draw_path(args.tp0, path_dict, img_name, sample_pos)

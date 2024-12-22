@@ -1,5 +1,6 @@
 
 import numpy as np
+import random
 
 class UCB:
     def __init__(self, n_actions):
@@ -26,13 +27,13 @@ class UCB:
 if __name__ == '__main__':
 
     # Define the true rewards for each action
-    true_rewards = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
+    true_rewards = np.array([0.1+0.3*random.random(), 0.2+0.3*random.random(), 0.3, 0.4, 0.4+0.2*random.random()])
 
     # Initialize the UCB agent
     ucb_agent = UCB(n_actions=len(true_rewards))
 
     # Run the UCB algorithm for 1000 steps
-    for step in range(1000):
+    for step in range(100000):
         # Select an action
         action = ucb_agent.select_action()
         print(action, end= ' ')

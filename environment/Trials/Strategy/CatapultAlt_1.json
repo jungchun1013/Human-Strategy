@@ -11,9 +11,9 @@
     "Goal":{"type":"Container","color":"black","density":0,"friction":0.5,"elasticity":0.5,"points":[[155,82],[155,5],[195,5],[195,82]],"width":10,"innerColor":"green","outerColor":"black"},
     "KeyBall":{"type":"Ball","color":"red","density":1,"friction":0.5,"elasticity":0.5,"velocity":[0,0],"position":[125,92],"radius":10},
     "Strut":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[420,0],[420,90],[440,90],[440,0]]},
-    "Lever":{"type":"Poly","color":"blue","density":1,"friction":0.5,"elasticity":0.5,"velocity":[0,0],"vertices":[[245,90],[245,100],[550,100],[550,90]]},
+    "Lever":{"type":"Poly","color":"blue","density":1,"friction":0.5,"elasticity":0.5,"velocity":[0,0],"vertices":[[255,90],[255,100],[570,100],[570,90]]},
     "CataBall":{"type":"Ball","color":"red","density":1,"friction":0.5,"elasticity":0.5,"velocity":[0,0],"position":[500,115],"radius":15},
     "Side1":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[470,0],[470,90],[600,90],[600,0]]},
-    "Side2":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[560,90],[560,300],[600,300],[600,90]]}},
+    "Side2":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[580,90],[580,300],[600,300],[600,90]]}},
     "blocks":{"Blocker":{"color":"grey","vertices":[[0,0],[0,600],[200,600],[200,0]]}},
     "constraints":{},"gcond":{"type":"ManyInGoal","objlist":["KeyBall","CataBall"],"goal":"Goal","duration":1}},"tools":{"obj1":[[[-30,20],[30,20],[0,-20]]],"obj2":[[[-36,-36],[-36,36],[36,36],[36,-36]]],"obj3":[[[-40,-10],[-40,10],[40,10],[40,-10]]]},"toolNames":["obj1","obj2","obj3"],"sucText":"Get either red ball into the green goal"}

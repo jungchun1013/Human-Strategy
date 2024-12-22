@@ -3,7 +3,7 @@ OURS_config = dict(
     max_attempts = 50,
     max_simulations = 4000,
     num_demos = 100,
-    attempt_threshold = 0.7,
+    attempt_success_threshold = 0.7,
     gm_ratio = 0
 )
 
@@ -16,7 +16,7 @@ SSUP_config = dict(
     lr =1000,
     max_attempts = 50,
     max_simulations = 4000,
-    attempt_threshold = 0.7,
+    attempt_success_threshold = 0.7,
 )
 
 GPR_SSUP_config = dict(
@@ -28,7 +28,7 @@ GPR_SSUP_config = dict(
     lr =1000,
     max_attempts = 50,
     max_simulations = 4000,
-    attempt_threshold = 0.7,
+    attempt_success_threshold = 0.7,
     num_demos = 10,
     gm_ratio = 0
 )
@@ -37,11 +37,12 @@ GPR_SSUP_config = dict(
 task_config = dict(
     Catapult = {'training':  ['Catapult_1', 'Catapult_2', 'Catapult_3'], 'testing': 'Catapult', 'start_tool': 'PLACED'},
     Unbox = {'training':  ['Unbox_1', 'Unbox_2', 'Unbox_3'], 'testing': 'Unbox', 'start_tool': 'PLACED'},
-    Prevention_A = {'training':  ['Prevention_A_1', 'Prevention_A_2', 'Prevention_A_3'], 'testing': 'Prevention_A', 'start_tool': 'PLACED'},
+    Prevention_A = {'training':  ['Prevention_A'], 'testing': 'Prevention_A', 'start_tool': 'PLACED'},
     Launch_v2 = {'training': ['Launch_v2_1', 'Launch_v2_2', 'Launch_v2_3'], 'testing': 'Launch_v2', 'start_tool': 'PLACED'},
     Funnel = {'training': ['Funnel_1', 'Funnel_2', 'Funnel_3'], 'testing': 'Funnel', 'start_tool': 'Ball', 'start_tool': 'CataBall'},
     # CatapultAlt = {'training':  ['Catapult', 'Catapult_2', 'Catapult_3', 'Launch_v2', 'Launch_v2_1', 'Launch_v2_2', 'Funnel', 'Funnel_1'], 'testing': 'CatapultAlt'},
     CatapultAlt = {'training':  ['Funnel_3', 'Funnel', 'Catapult_4', 'Catapult_5', 'Launch_v2_1', 'Launch_v2_3'], 'testing': 'CatapultAlt', 'start_tool': 'PLACED'},
+    # CatapultAlt = {'training':  ['Catapult_4', 'Catapult_5', 'Launch_v2_1', 'Launch_v2_3'], 'testing': 'CatapultAlt', 'start_tool': 'PLACED'},
     CatapultAltMod = {'training':  ['CatapultAlt', 'CatapultAlt_2', 'Launch_v2_1', 'Launch_v2_3', 'SlopeLaunch_1', 'SlopeLaunch_1'], 'testing': 'CatapultAlt', 'start_tool': 'PLACED'},
     # CatapultAlt = {'training':  ['CatapultAlt_1', 'CatapultAlt_2'], 'testing': 'CatapultAlt', 'start_tool': 'PLACED'},
     Slope = {'training':  ['Slope_1', 'Slope_2'], 'testing': 'Slope', 'start_tool': 'PLACED'},
@@ -54,12 +55,22 @@ task_config = dict(
     SmallSlope = {'training':  ['SmallSlope_1', 'SmallSlope_2'], 'testing': 'SmallSlope', 'start_tool': 'PLACED'},
     Slope_v2 = {'training':  ['Slope_v2_1', 'Slope_v2_2'], 'testing': 'Slope_v2', 'start_tool': 'PLACED'},
     MultiSlope_v3 = {'training':  ['SlopeR_v2', 'SlopeR_v2_1', 'SmallSlope', 'SmallSlope'], 'testing': 'MultiSlope_v3', 'start_tool': 'PLACED'},
+
+
+    Mech_Catapult = {'training':  ['Mech_Catapult_1', 'Mech_Catapult_2'], 'testing': 'Mech_Catapult_0', 'start_tool': 'PLACED'},
+    Mech_Gap = {'training':  ['Mech_Gap_1', 'Mech_Gap_2', 'Mech_Gap_3', 'Mech_Gap_4'], 'testing': 'Mech_Gap_0', 'start_tool': 'PLACED'},
+    Mech_SoClose = {'training':  ['Mech_SoClose_1', 'Mech_SoClose_2', 'Mech_SoClose_3', 'Mech_SoClose_4'], 'testing': 'Mech_SoClose_0', 'start_tool': 'PLACED'},
+    Mech_Launch_v2 = {'training':  ['Mech_Launch_v2_1', 'Mech_Launch_v2_2', 'Mech_Launch_v2_3', 'Mech_Launch_v2_4'], 'testing': 'Mech_Launch_v2_0', 'start_tool': 'PLACED'},
+    Comp_GapCatapult = {'training':  ['Mech_Catapult_0', 'Mech_Catapult_1', 'Mech_Catapult_2', 'Mech_Catapult_3', 'Mech_Catapult_4', 'Mech_Gap_0', 'Mech_Gap_1', 'Mech_Gap_2', 'Mech_Gap_3', 'Mech_Gap_4'], 'testing': 'Comp_GapCatapult', 'start_tool': 'PLACED'},
+    Comp_GapCatapult_1 = {'training':  ['Mech_Catapult_0', 'Mech_Catapult_1',  'Mech_Gap_0', 'Mech_Gap_1'], 'testing': 'Comp_GapCatapult', 'start_tool': 'PLACED'},
+
+
 )
 
 task2series = dict()
 
 for task_series, config in task_config.items():
-    for i in range(1, 6):
+    for i in range(6):
         task = f"{task_series}_{i}"
         task2series[task] = task_series
     task2series[task_series] = task_series

@@ -1,0 +1,22 @@
+{"world": {"dims": [600, 600], "bts": 0.01, "gravity": 200, "defaults": {"density": 1, "friction": 0.5, "elasticity": 0.5, "color": "black", "bk_color": "white"}, "objects": {"_LeftWall": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[-1, -1], [-1, 601], [1, 601], [1, -1]]}, "_BottomWall": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[-1, -1], [-1, 1], [601, 1], [601, -1]]}, 
+            "_RightWall": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[599, -1], [599, 601], [601, 601], [601, -1]]}, 
+            "_TopWall": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[-1, 599], [-1, 601], [601, 601], [601, 599]]}, 
+            "Table1": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[0, 300], [0, 400], [170, 400], [170, 300]]}, 
+            "Slope1": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[0, 400], [0, 460], [60, 400]]},
+            "Table2": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[160, 300], [160, 380], [175, 380], [175, 300]]}, 
+            "Cap": {"type": "Poly", "color": "blue", "density": 1, "vertices": [[170, 380], [170, 388], [320, 388], [320, 380]]}, 
+            "Slope2": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[170, 200], [170, 230], [250, 300], [280, 300], [280, 200]]},
+            "Slope3": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[0, 120], [0, 190], [70, 120]]},
+            "Buttom": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[0, 0], [0, 120], [350, 120], [350, 0]]},
+            "Floor2": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[100, 200], [100, 230], [170, 230], [170, 200]]},
+            "Strut1": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[250, 300], [250, 380], [280, 380], [280, 300]]}, 
+            "Floor1": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[320, 240], [320, 260], [500, 260], [500, 240]]},
+            "Block": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[320, 260], [320, 265], [325, 265], [325, 260]]},
+            "Ball": {"type": "Ball", "color": "red", "density": 1, "friction": 0.5, "elasticity": 0.5, "velocity": [0, 0], "position": [25, 552], "radius": 10}, 
+            "Table4": {"type": "Poly", "color": "blue", "density": 1, "friction": 0.5, "elasticity": 0.5, "vertices": [[340, 345], [340, 355], [510, 355], [510, 345]]}, 
+            "Strut": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[460, 260], [460, 345], [500, 345], [500, 260]]},
+            "Goal": {"type": "Container", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "points": [[350, 72], [350, 5], [405, 5], [405, 72]], "width": 5, "innerColor": "green", "outerColor": "black"},
+            "Slope4": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[500, 77], [600, 170], [600, 77]]},
+            "Table5": {"type": "Poly", "color": "black", "density": 0, "friction": 0.5, "elasticity": 0.5, "vertices": [[465, 0], [465, 77], [600, 77], [600, 0]]}
+            
+                        }, "blocks": {"Blocker":{"color":"grey","vertices":[[0,0],[0,120],[300,120],[300,0]]}}, "constraints": {}, "gcond": {"type": "ManyInGoal", "objlist": ["Ball", "CataBall"], "goal": "Goal", "duration": 1}}, "tools": {"obj1": [[[-15, -15], [-15, 15], [15, 15], [15, -15]]], "obj2": [[[-15, -40], [-15, 40], [15, 40], [15, -40]]], "obj3": [[[-30, -15], [-30, 10], [30, -15]]]}, "toolNames": ["obj1", "obj2", "obj3"], "sucText": "Get either red ball into the green goal"}

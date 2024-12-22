@@ -158,7 +158,7 @@ def drawWorldWithTools(tp, backgroundOnly=False, worlddict=None):
         newsc.fill(col)
         toolsc = _draw_tool(tp._tools[t], maketoolpt, [90,90])
         newsc.blit(toolsc, [3, 3])
-        s.blit(newsc, (630, 137 + 110*i))
+        s.blit(newsc, (world.dims[1] + 30, 137 + 110*i))
     return s
 
 def demonstrateWorld(world, hz = 30.):
@@ -272,6 +272,33 @@ def makeImageArray(worlddict, path, sample_ratio=1):
                     o.setRot(path[onm][i][2])
         images.append(drawWorld(world))
     return images
+
+def makeImageArraywithTool(worlddict, path, sample_ratio=1):
+    world = loadFromDict(worlddict)
+    images = [drawWorld(world)]
+    if len(path[(list(path.keys())[0])]) == 2:
+        nsteps = len(path[list(path.keys())[0]][0])
+    else:
+        nsteps = len(path[list(path.keys())[0]])
+
+    for i in range(1, nsteps, sample_ratio):
+        for onm, o in world.objects.items():
+            if not o.isStatic():
+                if len(path[onm]) == 2:
+                    o.setPos(path[onm][0][i])
+                    o.setRot(path[onm][1][i])
+                else:
+                    o.setPos(path[onm][i][0:2])
+                    o.setRot(path[onm][i][2])
+        # Draw tool placement
+        for tool_name, tool in world.tools.items():
+            if not tool.isStatic():
+                tool.setPos(path[tool_name][i][0:2])
+                if len(path[tool_name]) == 2:
+                    tool.setRot(path[tool_name][1][i])
+        images.append(drawWorld(world))
+    return images
+
 
 def makeImageArrayNoPath(worlddict, path_length):
     world = loadFromDict(worlddict)

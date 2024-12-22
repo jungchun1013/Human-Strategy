@@ -1,0 +1,9 @@
+{"world": {"dims": [600, 600], "bts": 0.01, "gravity": 200, "defaults": {"density": 1, "friction": 0.5, "elasticity": 0.5, "color": "black", "bk_color": "white"}, "objects": {"_LeftWall": {"type": "Poly", "color": "black", "density": 0, "vertices": [[-1, -1], [-1, 601], [1, 601], [1, -1]]}, 
+    "_BottomWall": {"type": "Poly", "color": "black", "density": 0, "vertices": [[-1, -1], [-1, 1], [601, 1], [601, -1]]}, 
+    "_RightWall": {"type": "Poly", "color": "black", "density": 0, "vertices": [[599, -1], [599, 601], [601, 601], [601, -1]]}, 
+    "_TopWall": {"type": "Poly", "color": "black", "density": 0, "vertices": [[-1, 599], [-1, 601], [601, 601], [601, 599]]}, 
+    "Slope": {"type": "Poly", "color": "black", "density": 0, "vertices": [[0, 0], [0, 380], [40, 380], [200, 255], [200, 0]]}, 
+    "Floor": {"type": "Poly", "color": "black", "density": 0, "vertices": [[200, 0], [200, 255], [300, 255], [300, 0]]}, 
+    "Ball": {"type": "Ball", "color": "red", "density": 1, "position": [120, 410], "radius": 15}, 
+    "Goal": {"type": "Container", "color": "black", "density": 0, "points": [[305, 192], [305, 70], [450, 70], [450, 192]], "width": 5, "innerColor": "green", "outerColor": "black"}, 
+    "Lid": {"type": "Poly", "color": "blue", "density": 1, "vertices": [[305, 197], [305, 205], [490, 205], [490, 197]]}}, "blocks": {}, "constraints": {}, "gcond": {"type": "SpecificInGoal", "goal": "Goal", "obj": "Ball", "duration": 2}}, "tools": {"obj1": [[[-30, 15], [-30, 30], [0, 30], [0, 15]], [[0, 15], [0, 30], [30, 30], [30, 15]], [[0, -30], [0, 15], [30, 15], [30, -30]]], "obj2": [[[-30, -30], [-30, 0], [-15, 0], [-15, -30]], [[-30, 0], [-30, 30], [-15, 30], [-15, 0]], [[-15, 0], [-15, 30], [30, 30], [30, 0]]], "obj3": [[[-20, 10], [20, 10], [0, -10]]]}, "toolNames": ["obj1", "obj2", "obj3"], "sucText": "Get the red ball into the green goal"}

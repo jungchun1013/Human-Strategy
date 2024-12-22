@@ -15,7 +15,8 @@ from pyGameWorld import ToolPicker
 # import pymunk as pm
 from pyGameWorld.helpers import centroidForPoly
 from pyGameWorld.viewer import demonstrateWorld, demonstrateTPPlacement
-from src.strategy import StrategyGraph, merge_graphs, merge_mechanisms, get_obj_type, train_mechanism, MechanismSet, build_graph_from_mechanism_seq
+# from src.strategy import StrategyGraph, merge_graphs, merge_mechanisms, get_obj_type, train_mechanism, MechanismSet, build_graph_from_mechanism_seq, StrategyManager
+from src.strategy import get_obj_type, train_mechanism, MechanismSet, build_graph_from_mechanism_seq, StrategyManager
 from src.utils import setup_experiment_dir, setup_task_args
 from src.utils import get_prior_SSUP
 from src.utils import draw_path, calculate_reward, draw_samples, draw_ellipse, draw_policies
@@ -67,7 +68,7 @@ def sample_from_mechanisms(mechanisms, idx=0):
     available_objects = args.movable_objects + args.tool_objects
     # goal_pos = centroidForPoly(args.btr0['world']['objects']['Goal']['points'])
     # obj_ext: for sampling
-    obj_ext =[goal_pos[0], goal_pos[1], 0, random()*10-5, random()*10-5]
+    obj_ext =[goal_pos[0], goal_pos[1], 0, randint()*10-5, randint()*10-5]
     # for backtracking
     obj_pos = goal_pos
     mech = None
@@ -387,23 +388,25 @@ def sample_from_strategy_graph(strat_graph, idx=0):
         tool (str): tool name
         obj_pos (list): object placement position
     '''
-    graph_list = [g for graph in strat_graph.strategy_graphs for g in strat_graph.strategy_graphs[graph].placement_graphs
-        # if all('model' in g.edges[e] for e in g.edges()
-        #     if e not in list(args.tp0.toolNames) + ['Goal']
-        # )
-    ]
-    g = choice(graph_list)
+    # graph_list = [g for graph in strat_graph.strategy_graphs for g in strat_graph.strategy_graphs[graph].placement_graphs
+    #     # if all('model' in g.edges[e] for e in g.edges()
+    #     #     if e not in list(args.tp0.toolNames) + ['Goal']
+    #     # )
+    # ]
+    # g = choice(graph_list)
+    g = strat_graph
     print("Selected graph", g.edges())
     cur_nd = 'Goal'
     pre_nd = None
     img_poss = [[],[]]
     goal_pos = centroidForPoly(args.btr0['world']['objects']['Goal']['points'])
     # obj_ext: for sampling
-    obj_ext =[goal_pos[0], goal_pos[1], 0, random()*10-5, random()*10-5]
+    obj_ext =[goal_pos[0], goal_pos[1], 0, randint(-5, 5), randint(-5 ,5)]
     # for backtracking
     obj_pos = goal_pos
     args.sequence_sample_poss.setdefault(cur_nd, []).append(list(obj_pos)+[0,0,0])
     # while cur_nd != 'PLACED' or g.predecessors(cur_nd):
+
     while list(g.predecessors(cur_nd)):
         # relative extrinsics
         pre_nd = choice(list(g.predecessors(cur_nd)))
@@ -414,7 +417,6 @@ def sample_from_strategy_graph(strat_graph, idx=0):
             prev_target_ext = (list(obj.position) + [0] + list(obj.velocity))
         else:
             prev_target_ext = None
-        print(pre_nd, cur_nd)
         if prev_target_ext is not None:
             if cur_nd == 'Goal':
                 target_init_pos = goal_pos
@@ -425,7 +427,8 @@ def sample_from_strategy_graph(strat_graph, idx=0):
         else:
             target_init_pos = args.tp0.objects[cur_nd].position
             x = [obj_ext[2:] + list(target_init_pos)]
-        sample_poss = g.edges[(pre_nd, cur_nd)]['model'].sample_y(x, n_samples=10, random_state=None)
+        # sample_poss = g.edges[(pre_nd, cur_nd)]['model'].sample_y(x, n_samples=10, random_state=None)
+        sample_poss = g.edges[(pre_nd, cur_nd)]['mech'].model.sample_y(x, n_samples=10, random_state=None)
         sample_poss = [list(item)
         for sublist in np.transpose(np.array(sample_poss), (0, 2, 1))
         for item in sublist]
@@ -433,7 +436,7 @@ def sample_from_strategy_graph(strat_graph, idx=0):
         for s in sample_poss:
             args.sequence_sample_poss.setdefault(cur_nd, []).append([obj_pos[0] + s[0], obj_pos[1] + s[1], s[2], s[3], s[4]])
         obj_pos = [obj_pos[0] + obj_ext[0], obj_pos[1] + obj_ext[1], obj_ext[2], obj_ext[3], obj_ext[4]]
-        print(pre_nd, cur_nd, obj_pos)
+        # print(pre_nd, cur_nd, obj_pos)
         cur_nd = pre_nd
         if not sample_poss: # failed to sample from GPR
             return None, None
@@ -442,7 +445,12 @@ def sample_from_strategy_graph(strat_graph, idx=0):
     )
     img_poss = [v for v in args.sequence_sample_poss.values()]
     draw_samples(args.tp0, img_poss, '', img_name)
-    tool = choice(list(g.nodes[cur_nd]['tools'])) if cur_nd == 'PLACED' else cur_nd
+    if cur_nd == 'PLACED' and 'tools' in g.nodes[cur_nd]:
+        tool = choice(list(g.nodes[cur_nd]['tools']))
+    elif cur_nd == 'PLACED' and 'tools' not in g.nodes[cur_nd]:
+        tool = choice(list(args.tp0.toolNames))
+    else:
+        tool = cur_nd
     return tool, obj_pos # only return one sample
 
 def sample_from_gm(strategy_graph):
@@ -496,7 +504,8 @@ def build_strategy_graph(task_series, strat_graph=None, start_tool = 'PLACED'):
     if strat_graph:
         strategy_graph = strat_graph
     else:
-        strategy_graph = StrategyGraph(task_series, [start_tool])
+        # strategy_graph = StrategyGraph(task_series, [start_tool])
+        strategy_graph = StrategyManager(args)
     sim_count = 0
     img_name = os.path.join(args.dir_name,
         'collision.png'
@@ -507,32 +516,19 @@ def build_strategy_graph(task_series, strat_graph=None, start_tool = 'PLACED'):
         success = False
         # SECTION - sample from noisy PE
         while not success:
-            # sample extrinsics from gaussian model in SG
-            can_sample_from_gm = any(i
-                for i in strategy_graph.fpg_gmm_list)
-            # FIXME - no gm
-            if can_sample_from_gm and random() < args.gm_ratio:
-                sample_type = 'gm'
-                sample_obj, sample_ext = sample_from_gm(strategy_graph)
-                path_info = simulate_from_gm(
-                    sample_obj,
-                    sample_ext,
-                    noisy=args.noisy
-                )
+            # sample_type = sample_exttype(args, strategy_graph)
+            if start_tool != 'PLACED':
+                sample_type = 'CF'
+                sample_objs = [start_tool]
             else:
-                # sample_type = sample_exttype(args, strategy_graph)
-                if start_tool != 'PLACED':
-                    sample_type = 'CF'
-                    sample_objs = [start_tool]
-                else:
-                    sample_type = 'tool'
-                    sample_objs = None
-                sample_obj, sample_ext, ext_info, path_info = sample_ext_by_type(
-                        args,
-                        sample_type,
-                        strategy_graph,
-                        sample_objs = sample_objs
-                    )
+                sample_type = 'tool'
+                sample_objs = None
+            sample_obj, sample_ext, ext_info, path_info = sample_ext_by_type(
+                    args,
+                    sample_type,
+                    strategy_graph,
+                    sample_objs = sample_objs
+                )
             path_dict, collisions, success = path_info
 
             if success:
@@ -540,11 +536,11 @@ def build_strategy_graph(task_series, strat_graph=None, start_tool = 'PLACED'):
                 args.sim_count = sim_count
                 # logging.info('Noisy Success: %d, %s %s (%d, %d)',
                     # sim_count, sample_obj, sample_type, sample_ext[0], sample_ext[1])
-                graph = strategy_graph.build_graph(args, sample_obj, sample_ext, path_info)
-                # NOTE - eliminate the case that the graph does not have path to goal due to noisy env
-                if "Goal" in graph.nodes():
+                # graph = strategy_graph.build_graph(args, sample_obj, sample_ext, path_info)
+                graph = strategy_graph.build_path(args, task_series, sample_obj, sample_ext, path_info)
+                if graph:
                     sim_count += 1
-                    strategy_graph.set_placement_graph(args, graph, start_tool)
+               
 
         # !SECTION
     return strategy_graph
@@ -583,9 +579,10 @@ def test(sample_obj, sample_pos, noisy=False):
         logging.info('Attempt Failed')
     return (path_dict, collisions, success)
 
-def sample(strat_seq=None):
+def sample(strategy_graph, strat_seq=None):
     sample_object, sample_position = sample_from_strategy_graph(strategy_graph)
     return sample_object, sample_position
+
     if 'CatapultAlt' in args.tnm:
         if strat_seq == ['PLACED', 'Lever','CataBall', 'KeyBall', 'Goal']:
             sample_object, sample_position = sample_for_catapultalt1(strategy_graph)
@@ -959,7 +956,7 @@ if __name__ == "__main__":
     parser.add_argument('-a', '--algorithm',
                         help='SSUP/ours', default='SSUP')
     parser.add_argument('-t', '--num-trials',
-                        help='number of trials', type=int, default=50)
+                        help='number of trials for each experiment', type=int, default=50)
     parser.add_argument('--num-demos',
                         help='number of demos for training', type=int, default=10)
     parser.add_argument('--num-experiments',
@@ -1000,6 +997,8 @@ if __name__ == "__main__":
                         action='store_true')
     # parse args and update config
     args = parser.parse_args()
+    
+    # load algorithm config
     if args.algorithm in ['SSUP']:
         cfg = config.SSUP_config
     elif args.algorithm in ['GPR', 'GPR_GEN', 'GPR_SSUP', 'GPR_SSUP_GEN']:
@@ -1008,12 +1007,14 @@ if __name__ == "__main__":
         cfg = config.OURS_config
     args.__dict__['task'] = config.task_config[args.tnm]
     args.__dict__['task2series'] = config.task2series
+    
     if not args.tsnm:
         args.__dict__['tsnm'] = args.task2series[args.tnm]
 
     if not args.train_tnm:
         # training task is same as testing task
         args.__dict__['train_tnm'] = args.tnm
+        
     for c in cfg:
         if c not in args:
             args.__dict__[c] = cfg[c]
@@ -1068,24 +1069,32 @@ if __name__ == "__main__":
                 tasks = args.task['training']
                 start_tool = config.task_config[args.tsnm]['start_tool']
                 if args.train and  trial_count % 2 == 0:
+                    strategy_graph = StrategyManager(args)
                     for tnm in tasks:
-                        logging.info('Training task %s', tnm)
+                        logging.info('Generalize: Training task %s', tnm)
                         setup_task_args(args, tnm)
                         start_tool = config.task_config[args.task2series[tnm]]['start_tool']
-                        strategy_graph = build_strategy_graph(args.task2series[tnm], start_tool=start_tool)
-                        strategy_graphs.append(strategy_graph)
+                        strategy_graph = build_strategy_graph(args.task2series[tnm], strat_graph=strategy_graph, start_tool=start_tool)
+                        # strategy_graphs.append(strategy_graph)
+                    strategy_graph.merge_path_info(args)
+                    strategy_graph.train(args)
+                else:
                     file_path = os.path.join('data/strategy', 'strat_'+args.tnm+'.pkl')
-                    save_strategy_graph(strategy_graphs, file_path)
-                file_path = os.path.join('data/strategy', 'strat_'+args.tnm+'.pkl')
-                strategy_graphs = load_strategy_graph(None, file_path)
-                strategy_graph = merge_graphs(args, strategy_graphs)
+                    strategy_graphs = load_strategy_graph(None, file_path)
+
             else:
                 logging.info('Training task %s', args.train_tnm)
-                start_tool = config.task_config[args.tsnm]['start_tool']
-                strategy_graph = build_strategy_graph(args.task2series[args.tnm], start_tool=start_tool)
-                strategy_graph.merge_graph(args)
-                strategy_graph.train(args)
+                if args.train:
+                    start_tool = config.task_config[args.tsnm]['start_tool']
+                    strategy_graph = build_strategy_graph(args.task2series[args.tnm], start_tool=start_tool)
+                    strategy_graph.merge_path_info(args)
+                    strategy_graph.train(args)
+                else:
+                    file_path = os.path.join('data/strategy', 'strat_'+args.tnm+'.pkl')
+                    strategy_graph = load_strategy_graph(None, file_path)
                 # strategy_graph = merge_graphs(args, [strategy_graph])
+            file_path = os.path.join('data/strategy', 'strat_'+args.tnm+'.pkl')
+            save_strategy_graph(strategy_graph, file_path)
 
             
             # !SECTION - learning/training
@@ -1099,7 +1108,7 @@ if __name__ == "__main__":
                 c = 0
                 while update_trial_count <= args.num_demos:
                     c += 1
-                    sample_object, sample_position = sample()
+                    sample_object, sample_position = sample(strategy_graph)
                     if random() > 0.8:
                         sample_object = choice(list(args.tp0.toolNames))
                         sample_position = args.get_prior(args.tp0, args.movable_objects)
@@ -1117,6 +1126,9 @@ if __name__ == "__main__":
                         # FIXME
                         strategy_graph.build_data_for_catapultAlt(args, sample_object, sample_position, path_info)
 
+            file_path = os.path.join('data/strategy', 'strat_m_'+args.tnm+'.pkl')
+            # save_strategy_graph(strategy_graph, file_path)
+            # strategy_graph = load_strategy_graph(None, file_path)
             logging.info('Start testing %s', args.tnm)
             # !SECTION - adaptation/update
             # SECTION - inference/testing
@@ -1124,20 +1136,24 @@ if __name__ == "__main__":
                 tnm = args.tnm
                 setup_task_args(args, tnm)
                 
+                # print(strategy_graph)
+                # mechanisms = MechanismSet(args, strategy_graph)
+                # mechanism_seq = mechanisms.sample_strategy(args)
+                # start_tool = config.task_config[args.tsnm]['start_tool']
+                # build_graph_from_mechanism_seq(mechanism_seq, args.task2series[args.tnm], start_tool)
+                strategy_MCTS = StrategyGraphMCTS(10, args, strategy_graph)
+                StrategyGraphState.set_mechanisms(strategy_graph.mechanism_set)
+                for i in range(1200):
+                    action, node = strategy_MCTS.sample()
+                    sample_object, sample_position = sample(action)
+                    path_info, reward = estimate_reward(args.tp0, sample_object, sample_position, noisy=False)
+                    strategy_MCTS.update_reward(node, reward)
+                    print(sample_object, sample_position, reward)
                 
-                mechanisms = MechanismSet(args, strategy_graph)
-                mechanism_seq = mechanisms.sample_strategy(args)
-                start_tool = config.task_config[args.tsnm]['start_tool']
-                build_graph_from_mechanism_seq(mechanism_seq, args.task2series[args.tnm], start_tool)
-                strategy_MCTS = StrategyGraphMCTS(1000, args)
-                StrategyGraphState.set_mechanisms(mechanisms)
-                for i in range(10):
-                    action = strategy_MCTS.search()
-                    print('-',action.state.graph.nodes())
-                
+                strategy_MCTS.print_graph()
+                strategy_MCTS.print_graph(reward_only=True)
                 quit()
 
-                
 
                 # TODO - design strategy graph from search
                 # GPR
@@ -1148,11 +1164,11 @@ if __name__ == "__main__":
                     # strat_sequence.append(['PLACED', 'CataBall', 'Goal'])
                     gaussian_policies = []
                     for strat_seq in strat_sequence:
-                        sample_object, sample_position = sample(strat_seq)
+                        sample_object, sample_position = sample(strategy_graph,strat_seq)
                         gaussian_policies.append(initialize_policy(sample_position[0], sample_position[1], 50))
                     sample_obj, sample_pos, path_info = SSUP2(gaussian_policies, strat_sequence)
                 else:
-                    sample_object, sample_position = sample()
+                    sample_object, sample_position = sample(strategy_graph)
                     gaussian_policies = initialize_policy(sample_position[0], sample_position[1], 50)
                     sample_obj, sample_pos, path_info = SSUP(gaussian_policies)
             
@@ -1160,7 +1176,7 @@ if __name__ == "__main__":
                 setup_task_args(args, args.tnm)
                 info = []
                 for i in range(100):
-                    sample_object, sample_position = sample()
+                    sample_object, sample_position = sample(strategy_graph)
                     sample_object = 'obj2'
                     # sample_position = [270+randint(1,40), 540+int(randint(1,40))]
                     path_info = test(sample_object, sample_position, noisy=False)
