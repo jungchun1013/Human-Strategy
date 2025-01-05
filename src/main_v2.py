@@ -16,19 +16,20 @@ from copy import deepcopy
 from pyGameWorld import ToolPicker
 from pyGameWorld.helpers import centroidForPoly
 from src.MCTS import StrategyGraphMCTS, StrategyGraphState
+from src.MCTS_schema import StrategySchemaMCTS, StrategySchemaState
 
 from src.utils import sample_ext_by_type
 from src.utils import draw_path, calculate_reward, draw_samples, draw_ellipse, draw_policies
 
-from src.strategy_v2 import get_obj_type, train_mechanism, MechanismSet, build_graph_from_mechanism_seq, StrategyManager
+from src.strategy_v2 import get_obj_type, train_mechanism, MechanismSet, StrategyManager
 
 
 def estimate_reward(tp, sample_obj, sample_pos, noisy=False):
     ''' estimate reward from PE given sample object and extrinsics 
     
     Args:
-        sample_obj (str): object name
-        sample_pos (list): object position
+        sample_obj (str): object name (obj1, obj2, obj3)
+        sample_pos (list): object position (x, y)
         noisy (bool): noisy or deterministic
     Returns:
         path_info (tuple): path information {path_dict, collisions, success}
@@ -45,11 +46,19 @@ def estimate_reward(tp, sample_obj, sample_pos, noisy=False):
 
 
 def set_exp_dir(args):
+    ''' record timestamp and set experiment directory
+    Args:
+        args (argparse.Namespace): command line arguments
+    '''
     args.experiment_time = datetime.now()
     setup_experiment_dir(args)
 
-def setup_config_before_experiment(args, trial_count): 
-    args.trial_dir_name = os.path.join(args.main_dir_name, str(trial_count).zfill(3))
+def setup_config_before_experiment(args):
+    ''' setup config before experiment
+    Args:
+        args (argparse.Namespace): command line arguments
+    '''
+    args.trial_dir_name = os.path.join(args.main_dir_name, str(args.trial_count).zfill(3))
     os.makedirs(args.trial_dir_name)
     logger = logging.getLogger()
     if logger.hasHandlers():
@@ -70,7 +79,10 @@ def setup_config_before_experiment(args, trial_count):
             logging.info('%20s %-s', arg, args.__dict__[arg])
 
 def load_args(args):
-    # load algorithm config
+    ''' load algorithm config
+    Args:
+        args (argparse.Namespace): command line arguments
+    '''
     if args.algorithm in ['SSUP']:
         cfg = config.SSUP_config
     elif args.algorithm in ['GPR', 'GPR_GEN', 'GPR_SSUP', 'GPR_SSUP_GEN']:
@@ -106,11 +118,34 @@ def load_args(args):
     
     return args
 
-def sample(args, strategy_graph, training_strategy_graphs=None):
-    sample_object, sample_position = sample_from_strategy_graph(args, strategy_graph, training_strategy_graphs)
+def sample(args, strategy_graph, training_strategy_graphs=None, action=None, method='GPR'):
+    ''' sample an action (tool, position) from strategy graph
+    Args:
+        args (argparse.Namespace): command line arguments
+        strategy_graph (StrategyGraph): StrategyManager
+        training_strategy_graphs (list): training strategy graphs
+        method (str): sampling method (schema or GPR)
+    Returns:
+        sample_object (str): sample object
+        sample_position (list): sample position
+    '''
+    # FIXME - variable name not consistent
+    if method == 'schema':
+        sample_object, sample_position = sample_from_schema3(args, strategy_graph, action)
+    elif method == 'GPR':
+        sample_object, sample_position = sample_from_strategy_graph(args, strategy_graph, training_strategy_graphs)
     return sample_object, sample_position
 
 def match_mechanism(pre_nd, cur_nd, training_strategy_graphs):
+    ''' find matched mechanism by object type from training strategy graphs
+    Args:
+        pre_nd (str): previous node
+        cur_nd (str): current node
+        training_strategy_graphs (list): training strategy graphs
+    Returns:
+        mechanism_list (list): mechanism list
+    '''
+    
     # FIXME - use defined group to catagorize objects
     mechanism_list = []
     obj_group_dict = {
@@ -125,8 +160,243 @@ def match_mechanism(pre_nd, cur_nd, training_strategy_graphs):
                        
     return choice(mechanism_list)
 
+def sample_from_schema(args, strategy_graph):
+    ''' sample an action (tool, position) from schema
+    Now we only work on GapCatapult
+    Args:
+        args (argparse.Namespace): command line arguments
+        strategy_graph (StrategyGraph): StrategyManager
+    Returns:
+        sample_object (str): sample object
+        sample_position (list): sample position
+    '''
+    schema_list = [m for model in strategy_graph.schema.values() for m in model.values()]  # collect nested dict items as list
+    schema = choice(schema_list)
+    
+    graph_list = [g for graph in strategy_graph.strategy_graphs.values() for path, g in graph.items()]
+    g = choice(graph_list)
+    goal_prev_node = next(nd for nd in g.predecessors("Goal"))
+    print((goal_prev_node, "Goal"))
+    goal_gpr = g.edges[(goal_prev_node, "Goal")]['model']
+    
+    placed_succ_node = next(nd for nd in g.successors("PLACED"))
+    placed_gpr = g.edges[("PLACED", placed_succ_node)]['model']
+    
+    goal_pos = centroidForPoly(args.btr0['world']['objects']['Goal']['points'])
+    obj_pos = goal_pos
+    
+    obj_ext =[goal_pos[0], goal_pos[1], 0, 0, 0]
+    cur_nd = "Goal"
+    prev_target_ext = list(goal_pos) + [0, 0, 0]
+    tool_init_pos = args.tp0.objects[goal_prev_node].position
+    target_init_pos = goal_pos
+    x = [list(obj_ext[2:]) + list(prev_target_ext) + list(tool_init_pos) + list(target_init_pos)]
+    
+
+    sample_poss = []
+    # FIXME - take possible model from training task
+    # pre_nd_train, cur_nd_train = match_mechanism(pre_nd, cur_nd, training_strategy_graphs)
+    sample_poss = goal_gpr.sample_y(x, n_samples=10, random_state=None)
+
+    
+    if len(sample_poss) == 0: # failed to sample from GPR
+        return None, None
+    sample_poss = [list(item)
+    for sublist in np.transpose(np.array(sample_poss), (0, 2, 1))
+    for item in sublist]
+    obj_ext = list(np.array(sample_poss).mean(axis=0))
+    for s in sample_poss:
+        args.sequence_sample_poss.setdefault(cur_nd, []).append([obj_pos[0] + s[0], obj_pos[1] + s[1], s[2], s[3], s[4]])
+    obj_pos = [obj_pos[0] + obj_ext[0], obj_pos[1] + obj_ext[1], obj_ext[2], obj_ext[3], obj_ext[4]]
+    
+    
+    
+    print(goal_prev_node,'goal', obj_pos)
+
+    cur_nd = goal_prev_node
+    obj = args.tp0.objects[cur_nd]
+    prev_target_ext = (list(obj.position) + [0] + list(obj.velocity))
+    tool_init_pos = args.tp0.objects[placed_succ_node].position
+    target_init_pos = args.tp0.objects[goal_prev_node].position
+    x = [list(obj_ext[2:]) + list(prev_target_ext) + list(tool_init_pos) + list(target_init_pos)]
+    
+    
+
+    sample_poss = schema.sample_y(x, n_samples=10, random_state=None)
+
+
+
+    if len(sample_poss) == 0: # failed to sample from GPR
+        return None, None
+    sample_poss = [list(item)
+    for sublist in np.transpose(np.array(sample_poss), (0, 2, 1))
+    for item in sublist]
+    obj_ext = list(np.array(sample_poss).mean(axis=0))
+    for s in sample_poss:
+        args.sequence_sample_poss.setdefault(cur_nd, []).append([obj_pos[0] + s[0], obj_pos[1] + s[1], s[2], s[3], s[4]])
+    obj_pos = [obj_pos[0] + obj_ext[0], obj_pos[1] + obj_ext[1], obj_ext[2], obj_ext[3], obj_ext[4]]
+    
+    print('schema', obj_pos)
+    
+    
+    
+    
+    cur_nd = placed_succ_node
+    prev_target_ext = None
+    target_init_pos = args.tp0.objects[placed_succ_node].position
+    x = [obj_ext[2:] + list(target_init_pos)]
+
+
+    sample_poss = placed_gpr.sample_y(x, n_samples=10, random_state=None)
+
+    if len(sample_poss) == 0: # failed to sample from GPR
+        return None, None
+    sample_poss = [list(item)
+    for sublist in np.transpose(np.array(sample_poss), (0, 2, 1))
+    for item in sublist]
+    obj_ext = list(np.array(sample_poss).mean(axis=0))
+    for s in sample_poss:
+        args.sequence_sample_poss.setdefault(cur_nd, []).append([obj_pos[0] + s[0], obj_pos[1] + s[1], s[2], s[3], s[4]])
+    obj_pos = [obj_pos[0] + obj_ext[0], obj_pos[1] + obj_ext[1], obj_ext[2], obj_ext[3], obj_ext[4]]
+    
+    tool = choice(list(args.tp0.toolNames))
+    print('placed', obj_pos)
+    
+    img_name = os.path.join(args.trial_dir_name,
+        'schema_seq.png'
+    )
+    img_poss = [v for v in args.sequence_sample_poss.values()]
+    draw_samples(args.tp0, img_poss, '', img_name)
+    
+
+    
+    return tool, obj_pos
+
+def sample_from_schema2(args, strategy_graph):
+    ''' sample an action (tool, position) from schema
+    Now we only work on GapCatapult
+    Args:
+        args (argparse.Namespace): command line arguments
+        strategy_graph (StrategyGraph): StrategyManager
+    Returns:
+        sample_object (str): sample object
+        sample_position (list): sample position
+    '''
+    schema_list = [m for model in strategy_graph.schema.values() for m in model.values()]  # collect nested dict items as list
+    schema, graph, object_types = choice(schema_list)
+    
+    obj_pos = centroidForPoly(args.btr0['world']['objects']['Goal']['points'])
+    
+    obj_pos_list = []
+    cur_nd = "PLACED"
+    nd = "PLACED"
+    while nd != "Goal":
+        nd = next(nd for nd in graph.successors(nd))
+        pos = args.tp0.objects[nd].position if nd != "Goal" else centroidForPoly(args.btr0['world']['objects']['Goal']['points'])
+        obj_pos_list.extend(list(pos))
+        print(nd, get_obj_type(nd))
+    print(obj_pos_list)
+    
+    x = [obj_pos_list]
+
+    sample_poss = schema.sample_y(x, n_samples=10, random_state=None)
+
+
+
+    if len(sample_poss) == 0: # failed to sample from GPR
+        return None, None
+    sample_poss = [list(item)
+    for sublist in np.transpose(np.array(sample_poss), (0, 2, 1))
+    for item in sublist]
+    obj_ext = list(np.array(sample_poss).mean(axis=0))
+    for s in sample_poss:
+        args.sequence_sample_poss.setdefault(cur_nd, []).append([obj_pos[0] + s[0], obj_pos[1] + s[1]])
+    obj_pos = [obj_pos[0] + obj_ext[0], obj_pos[1] + obj_ext[1]]
+    
+    print('schema sampled pos:', obj_pos)
+    
+    
+    tool = choice(list(args.tp0.toolNames))
+    print('placed', obj_pos)
+    
+    img_name = os.path.join(args.trial_dir_name,
+        'schema_seq.png'
+    )
+    img_poss = [v for v in args.sequence_sample_poss.values()]
+    draw_samples(args.tp0, img_poss, '', img_name)
+    
+
+    
+    return tool, obj_pos
+
+def sample_from_schema3(args, strategy_graph, action):
+    ''' sample an action (tool, position) from schema
+    Args:
+        args (argparse.Namespace): command line arguments
+        strategy_graph (StrategyGraph): StrategyManager
+    Returns:
+        sample_object (str): sample object
+        sample_position (list): sample position
+    '''
+    print(action.edges(data=True))
+    
+    for act in action.edges():
+        # act.schema is edge, act.schema[2] is data
+        u, v = act
+        task_type, strat_type, sampled_obj = action[u][v]['schema'].split(';')
+
+        schema, graph, object_types = strategy_graph.schema[task_type][strat_type]
+        
+        
+    
+    
+        obj_pos = centroidForPoly(args.btr0['world']['objects']['Goal']['points'])
+        
+        obj_pos_list = []
+        cur_nd = "PLACED"
+        nd = "PLACED"
+        while nd != "Goal":
+            nd = next(nd for nd in graph.successors(nd))
+            pos = args.tp0.objects[nd].position if nd != "Goal" else centroidForPoly(args.btr0['world']['objects']['Goal']['points'])
+            obj_pos_list.extend(list(pos))
+            print(nd, get_obj_type(nd))
+        print(obj_pos_list)
+        
+        x = [obj_pos_list]
+
+        sample_poss = schema.sample_y(x, n_samples=10, random_state=None)
+
+
+
+        if len(sample_poss) == 0: # failed to sample from GPR
+            return None, None
+        sample_poss = [list(item)
+        for sublist in np.transpose(np.array(sample_poss), (0, 2, 1))
+        for item in sublist]
+        obj_ext = list(np.array(sample_poss).mean(axis=0))
+        for s in sample_poss:
+            args.sequence_sample_poss.setdefault(cur_nd, []).append([obj_pos[0] + s[0], obj_pos[1] + s[1]])
+        obj_pos = [obj_pos[0] + obj_ext[0], obj_pos[1] + obj_ext[1]]
+    
+    print('schema sampled pos:', obj_pos)
+    
+    
+    tool = choice(list(args.tp0.toolNames))
+    print('placed', obj_pos)
+    
+    img_name = os.path.join(args.trial_dir_name,
+        'schema_seq.png'
+    )
+    img_poss = [v for v in args.sequence_sample_poss.values()]
+    draw_samples(args.tp0, img_poss, '', img_name)
+    
+
+    
+    return tool, obj_pos
+
+
 def sample_from_strategy_graph(args, strat_graph, idx=0, training_strategy_graphs=None):
-    '''do sample from gaussian process model in graph
+    ''' sample an action (tool, position) from gaussian process model in graph
 
     Args:
         strat_graph (StrategyGraph): strategy graph or action in MCTS
@@ -142,7 +412,7 @@ def sample_from_strategy_graph(args, strat_graph, idx=0, training_strategy_graph
     else:
         g = strat_graph
     
-    print("Selected graph", g.edges())
+    # print("Sampled graph", g.edges())
     cur_nd = 'Goal'
     pre_nd = None
     img_poss = [[],[]]
@@ -151,50 +421,45 @@ def sample_from_strategy_graph(args, strat_graph, idx=0, training_strategy_graph
     obj_ext =[goal_pos[0], goal_pos[1], 0, randint(-5, 5), randint(-5 ,5)]
     # for backtracking
     obj_pos = goal_pos
-    args.sequence_sample_poss.setdefault(cur_nd, []).append(list(obj_pos)+[0,0,0])
+    args.sequence_sample_poss.setdefault(cur_nd, []).append(list(obj_pos))
     # while cur_nd != 'PLACED' or g.predecessors(cur_nd):
 
     while list(g.predecessors(cur_nd)):
         # relative extrinsics
         pre_nd = choice(list(g.predecessors(cur_nd)))
         if pre_nd != 'PLACED' and cur_nd == 'Goal':
-            prev_target_ext = list(goal_pos) + [0, 0, 0]
+            prev_target_ext = list(goal_pos)
+            target_init_pos = goal_pos
+            tool_init_pos = args.tp0.objects[pre_nd].position
+            x = [prev_target_ext + list(tool_init_pos) + list(target_init_pos)]
         elif pre_nd != 'PLACED' and cur_nd != 'Goal':
             obj = args.tp0.objects[cur_nd]
-            prev_target_ext = (list(obj.position) + [0] + list(obj.velocity))
-        else:
-            prev_target_ext = None
-        if prev_target_ext is not None:
-            if cur_nd == 'Goal':
-                target_init_pos = goal_pos
-            else:
-                target_init_pos = args.tp0.objects[cur_nd].position
-            tool_init_pos = args.tp0.objects[pre_nd].position
-            x = [list(obj_ext[2:]) + list(prev_target_ext) + list(tool_init_pos) + list(target_init_pos)]
-        else:
+            # prev_target_ext = (list(obj.position) + [0] + list(obj.velocity))
+            # prev_target_ext = list(obj.position)
+            prev_target_ext = obj_pos
             target_init_pos = args.tp0.objects[cur_nd].position
-            x = [obj_ext[2:] + list(target_init_pos)]
+            tool_init_pos = args.tp0.objects[pre_nd].position
+            x = [prev_target_ext + list(tool_init_pos) + list(target_init_pos)]
+        else: # pre_nd == 'PLACED'
+            tool_init_pos = None
+            prev_target_ext = obj_pos
+            target_init_pos = args.tp0.objects[cur_nd].position
+            x = [prev_target_ext + list(target_init_pos)]
+
         # sample_poss = g.edges[(pre_nd, cur_nd)]['model'].sample_y(x, n_samples=10, random_state=None)
-        sample_poss = None
+        sample_poss = []
         # FIXME - take possible model from training task
-        # pre_nd_train, cur_nd_train = match_mechanism(pre_nd, cur_nd, training_strategy_graphs)
-        
-        pre_nd_train, cur_nd_train = pre_nd, cur_nd
-        if g.edges[(pre_nd_train, cur_nd_train)]['mech'].model:
-            sample_poss = g.edges[(pre_nd_train, cur_nd_train)]['mech'].model.sample_y(x, n_samples=10, random_state=None)
-        print(pre_nd, cur_nd, '|',pre_nd_train, cur_nd_train, g.edges[(pre_nd_train, cur_nd_train)]['mech'].model)
-        if not sample_poss: # failed to sample from GPR
+        if g.edges[(pre_nd, cur_nd)]['mech'].model:
+            sample_poss = g.edges[(pre_nd, cur_nd)]['mech'].model.sample_y(x, n_samples=10, random_state=None)
+        if len(sample_poss) == 0: # failed to sample from GPR
             return None, None
         sample_poss = [list(item)
         for sublist in np.transpose(np.array(sample_poss), (0, 2, 1))
         for item in sublist]
         obj_ext = list(np.array(sample_poss).mean(axis=0))
         for s in sample_poss:
-            args.sequence_sample_poss.setdefault(cur_nd, []).append([obj_pos[0] + s[0], obj_pos[1] + s[1], s[2], s[3], s[4]])
-        obj_pos = [obj_pos[0] + obj_ext[0], obj_pos[1] + obj_ext[1], obj_ext[2], obj_ext[3], obj_ext[4]]
-        print(obj_pos[0:1])
-        
-        # print(pre_nd, cur_nd, obj_pos)
+            args.sequence_sample_poss.setdefault(cur_nd, []).append([obj_pos[0] + s[0], obj_pos[1] + s[1]])
+        obj_pos = [obj_pos[0] + obj_ext[0], obj_pos[1] + obj_ext[1]]
         cur_nd = pre_nd
 
     img_name = os.path.join(args.trial_dir_name,
@@ -202,12 +467,14 @@ def sample_from_strategy_graph(args, strat_graph, idx=0, training_strategy_graph
     )
     img_poss = [v for v in args.sequence_sample_poss.values()]
     draw_samples(args.tp0, img_poss, '', img_name)
-    if cur_nd == 'PLACED' and 'tools' in g.nodes[cur_nd]:
-        tool = choice(list(g.nodes[cur_nd]['tools']))
-    elif cur_nd == 'PLACED' and 'tools' not in g.nodes[cur_nd]:
-        tool = choice(list(args.tp0.toolNames))
-    else:
-        tool = cur_nd
+    tool = choice(list(args.tp0.toolNames))
+    # if cur_nd == 'PLACED' and 'tools' in g.nodes[cur_nd]:
+    #     tool = choice(list(g.nodes[cur_nd]['tools']))
+    #     print(tool)
+    # elif cur_nd == 'PLACED' and 'tools' not in g.nodes[cur_nd]:
+    #     tool = choice(list(args.tp0.toolNames))
+    # else:
+    #     tool = cur_nd
     return tool, obj_pos # only return one sample
 
 def random_tool_testing(args):
@@ -322,7 +589,7 @@ def SSUP_testing(args, policies):
         # SECTION - Sample action
         acting = False
         sample_type = 'GM'
-        if random() < epsilon:
+        if random.random() < epsilon:
             # NOTE - sample from prior
             sample_type = 'prior'
             sample_obj = choice(list(tp.toolNames))
@@ -423,29 +690,48 @@ def GPR_sample_testing(args, strategy_graph):
     info = []
     for i in range(100):
         sample_object, sample_position = sample(args, strategy_graph)
-        path_info = test(sample_object, sample_position, noisy=False)
+        path_info, reward = estimate_reward(args.tp0, sample_object, sample_position, noisy=False)
+
+def schema_testing(args, strategy_graph):
+    setup_task_args(args, args.testing_task)
+    info = []
+    for i in range(1):
+        sample_object, sample_position = sample(args, strategy_graph, method='schema')
+        path_info, reward = estimate_reward(args.tp0, sample_object, sample_position, noisy=False)
+        print(sample_object, sample_position, reward)
 
 def build_Strategy_MCTS(args, strategy_graph, num_sim=100):
     strategy_MCTS = StrategyGraphMCTS(10, args, strategy_graph)
     StrategyGraphState.set_mechanisms(strategy_graph.mechanism_set)
-    print(strategy_graph.mechanism_set.mechanisms)
     for i in range(num_sim):
         action, node = strategy_MCTS.sample()
-        for a in action.edges():
-            print(f"Edge from {a[0]} to {a[1]} with attributes: {a[2]}")
-        quit()
-        sample_object, sample_position = sample(args, action, strategy_graph)
+        sample_object, sample_position = sample(args, strategy_graph, action=action)
         path_info, reward = estimate_reward(args.tp0, sample_object, sample_position, noisy=False)
         strategy_MCTS.update_reward(node, reward)
-        print(action.edges(), sample_object, sample_position, reward)
-    
+        print(list(action.edges())[::-1], sample_object, int(sample_position[0]), int(sample_position[1]), reward)
+        strategy_MCTS.print_simple_graph()
+
+    strategy_MCTS.print_graph()
+    return strategy_MCTS
+
+def build_Strategy_schema_MCTS(args, strategy_graph, num_sim=20):
+    strategy_MCTS = StrategySchemaMCTS(10, args, strategy_graph)
+    StrategySchemaState.set_schema(strategy_graph.schema)
+    for i in range(num_sim):
+        action, node = strategy_MCTS.sample()
+        sample_object, sample_position = sample(args, strategy_graph, action=action, method="schema")
+        path_info, reward = estimate_reward(args.tp0, sample_object, sample_position, noisy=False)
+        strategy_MCTS.update_reward(node, reward)
+        print(list(action.edges())[::-1], sample_object, int(sample_position[0]), int(sample_position[1]), reward)
+        strategy_MCTS.print_simple_graph()
+
     strategy_MCTS.print_graph()
     return strategy_MCTS
 
 def GPR_MCTS_testing(args, strategy_graph):
     tnm = args.testing_task
     setup_task_args(args, tnm)
-    strategy_MCTS = build_Strategy_MCTS(args, strategy_graph, num_sim=1000)
+    strategy_MCTS = build_Strategy_MCTS(args, strategy_graph, num_sim=50)
     
     # FIXED - UCB implemented in MCTS update() and estimate_value()
     action, node = strategy_MCTS.sample()
@@ -453,21 +739,28 @@ def GPR_MCTS_testing(args, strategy_graph):
     gaussian_policies = initialize_policy(sample_position[0], sample_position[1], 50)
     sample_obj, sample_pos, path_info = SSUP_testing(args,gaussian_policies)
 
+def schema_MCTS_testing(args, strategy_graph):
+    tnm = args.testing_task
+    setup_task_args(args, tnm)
+    strategy_schema_MCTS = build_Strategy_schema_MCTS(args, strategy_graph, num_sim=20)
+    
+    # FIXED - UCB implemented in MCTS update() and estimate_value()
+    action, node = strategy_schema_MCTS.sample()
+    sample_object, sample_position = sample(args, strategy_graph, action=action, method='schema')
+    gaussian_policies = initialize_policy(sample_position[0], sample_position[1], 50)
+    sample_obj, sample_pos, path_info = SSUP_testing(args,gaussian_policies)
 def GPR_SSUP_testing(args, strategy_graph):
-    tnm = args.tnm
+    # tnm = args.tnm
+    tnm = args.testing_task
     setup_task_args(args, tnm)
 
     sample_object, sample_position = sample(args, strategy_graph)
+    print("sampled_action:", sample_object, sample_position)
     gaussian_policies = initialize_policy(sample_position[0], sample_position[1], 50)
     sample_obj, sample_pos, path_info = SSUP_testing(args,gaussian_policies)
 
 
-def build_strategy_graph(task_series, strat_graph=None, start_tool = 'PLACED'):
-    if strat_graph:
-        strategy_graph = strat_graph
-    else:
-        # strategy_graph = StrategyGraph(task_series, [start_tool])
-        strategy_graph = StrategyManager(args)
+def build_strategy_graph(task_series, strategy_graph, start_tool = 'PLACED'):
     sim_count = 0
     img_name = os.path.join(args.trial_dir_name,
         'collision.png'
@@ -478,7 +771,6 @@ def build_strategy_graph(task_series, strat_graph=None, start_tool = 'PLACED'):
         success = False
         # SECTION - sample from noisy PE
         while not success:
-            # sample_type = sample_exttype(args, strategy_graph)
             if start_tool != 'PLACED':
                 sample_type = 'CF'
                 sample_objs = [start_tool]
@@ -494,15 +786,11 @@ def build_strategy_graph(task_series, strat_graph=None, start_tool = 'PLACED'):
             path_dict, collisions, success = path_info
 
             if success:
-                # sim_count += 1
                 args.sim_count = sim_count
-                # logging.info('Noisy Success: %d, %s %s (%d, %d)',
-                    # sim_count, sample_obj, sample_type, sample_ext[0], sample_ext[1])
-                # graph = strategy_graph.build_graph(args, sample_obj, sample_ext, path_info)
                 graph = strategy_graph.build_path(args, task_series, sample_obj, sample_ext, path_info)
                 # FIXME - all result should count
-                if graph:
-                    sim_count += 1
+                # if graph:
+                sim_count += 1
                
     
         # !SECTION
@@ -520,36 +808,97 @@ def gaussian_program_learning(args):
             logging.info('Generalize: Training task %s', tnm)
             setup_task_args(args, tnm)
             start_tool = config.task_config[config.task2series[tnm]]['start_tool']
-            strategy_graph = build_strategy_graph(config.task2series[tnm], strat_graph=strategy_graph, start_tool=start_tool)
+            strategy_graph = build_strategy_graph(config.task2series[tnm], strategy_graph=strategy_graph, start_tool=start_tool)
             strategy_graph.merge_path_info(args)
-        strategy_graph.train(args)
+        strategy_graph.build_mechanisms(args)
         file_path = os.path.join('data/strategy', 'strat_'+args.tnm+'.pkl')
         save_strategy_graph(strategy_graph, file_path)
     else:
+        setup_task_args(args, args.testing_task)
         file_path = os.path.join('data/strategy', 'strat_'+args.tnm+'.pkl')
         strategy_graph = load_strategy_graph(None, file_path)
-    print("Strategy Graph Parameters:")
-    for param, value in strategy_graph.__dict__.items():
-        print(f"{param}: {value}")
+        strategy_graph.build_mechanisms(args)
+        
+    print("Strategy Graph Parameters")
+    print(strategy_graph)
+    return strategy_graph
+
+
+def schema_learning(args):
+    strategy_graphs = []
+    tasks = args.training_tasks
+    start_tool = config.task_config[args.tsnm]['start_tool']
+    strategy_graph = None
+    if args.train:
+        strategy_graph = StrategyManager(args)
+        for tnm in tasks:
+            logging.info('Generalize: Training task %s', tnm)
+            setup_task_args(args, tnm)
+            start_tool = config.task_config[config.task2series[tnm]]['start_tool']
+            strategy_graph = build_strategy_graph(config.task2series[tnm], strategy_graph=strategy_graph, start_tool=start_tool)
+            strategy_graph.merge_path_info(args)
+        # NOTE - learn schema
+        file_path = os.path.join('data/strategy', 'strat_'+args.algorithm+'_'+args.tnm+'.pkl')
+        save_strategy_graph(strategy_graph, file_path)
+        strategy_graph.build_mechanisms(args)
+        strategy_graph.build_schema(args)
+        strategy_graph.build_forward_schema(args)
+    else:
+        setup_task_args(args, args.testing_task)
+        file_path = os.path.join('data/strategy', 'strat_'+args.algorithm+'_'+args.tnm+'.pkl')
+        strategy_graph = load_strategy_graph(None, file_path)
+        strategy_graph.build_mechanisms(args)
+        strategy_graph.build_schema(args)
+        strategy_graph.build_forward_schema(args)
+        
+    print("Strategy Graph Parameters")
+    print(strategy_graph)
     return strategy_graph
 
 
 def run_algorithm(args):
+    # NOTE - training stage
+    if args.algorithm == 'random':
+        pass
+    elif args.algorithm == 'SSUP':
+        pass
+    elif args.algorithm == 'GPR':
+        strategy_graph = gaussian_program_learning(args)
+    elif args.algorithm == 'ours':
+        strategy_graph = schema_learning(args)
+
+    # Testing stage
     if args.algorithm == 'random':
         random_tool_testing(args)
-    if args.algorithm == 'SSUP':
+    elif args.algorithm == 'SSUP':
         setup_task_args(args)
         gaussian_policies = initialize_policy(300, 300, 50)
         SSUP_testing(args, gaussian_policies)
     elif args.algorithm == 'GPR':
-        strategy_graph = gaussian_program_learning(args)
-        # GPR_SSUP_testing(args, strategy_graph)
-        GPR_MCTS_testing(args, strategy_graph)
+        if args.SSUP:
+            if args.MCTS:
+                GPR_MCTS_testing(args, strategy_graph)
+            else:
+                GPR_SSUP_testing(args, strategy_graph)
+        else:
+            sample_poss = []
+            # NOTE - only test sample 30 times without update
+            for i in range(100):
+                sample_object, sample_position = sample(args, strategy_graph)
+                path_info, reward = estimate_reward(args.tp0, sample_object, sample_position, noisy=False)
+                sample_poss.append([sample_position[0:2]])
+                print(sample_object, sample_position, reward)
+    elif args.algorithm == 'ours':
+        if args.MCTS:
+            schema_MCTS_testing(args, strategy_graph)
+        else:
+            schema_testing(args, strategy_graph)
     
 def main(args):
     set_exp_dir(args)
     for trial_count in range(args.num_trials):
-        setup_config_before_experiment(args, trial_count)
+        args.trial_count = trial_count
+        setup_config_before_experiment(args)
         run_algorithm(args)    
     
 
@@ -577,7 +926,7 @@ if __name__ == "__main__":
                         help='use SSUP for testing else only sampling', action='store_true')
     parser.add_argument('-u', '--update',
                         help='use SSUP for testing else only sampling', action='store_true')
-    parser.add_argument('--UCB',
+    parser.add_argument('--MCTS',
                         help='use SSUP for testing else only sampling', action='store_true')
     parser.add_argument('--train',
                         help='use SSUP for testing else only sampling', action='store_true')
@@ -606,9 +955,9 @@ if __name__ == "__main__":
     import numpy as np
 
     # Set seed for reproducibility
-    seed_value = 42  # You can change this value for different seeds
-    random.seed(seed_value)
-    np.random.seed(seed_value)
+    # seed_value = 42  # You can change this value for different seeds
+    # random.seed(seed_value)
+    # np.random.seed(seed_value)
     main(args)
     
 # !SECTION - main program

@@ -57,7 +57,7 @@ task_config = dict(
     MultiSlope_v3 = {'training':  ['SlopeR_v2', 'SlopeR_v2_1', 'SmallSlope', 'SmallSlope'], 'testing': 'MultiSlope_v3', 'start_tool': 'PLACED'},
 
 
-    Mech_Catapult = {'training':  ['Mech_Catapult_1', 'Mech_Catapult_2'], 'testing': 'Mech_Catapult_0', 'start_tool': 'PLACED'},
+    Mech_Catapult = {'training':  ['Mech_Catapult_1', 'Mech_Catapult_2', 'Mech_Catapult_3', 'Mech_Catapult_4'], 'testing': 'Mech_Catapult_0', 'start_tool': 'PLACED'},
     Mech_Gap = {'training':  ['Mech_Gap_1', 'Mech_Gap_2', 'Mech_Gap_3', 'Mech_Gap_4'], 'testing': 'Mech_Gap_0', 'start_tool': 'PLACED'},
     Mech_SoClose = {'training':  ['Mech_SoClose_1', 'Mech_SoClose_2', 'Mech_SoClose_3', 'Mech_SoClose_4'], 'testing': 'Mech_SoClose_0', 'start_tool': 'PLACED'},
     Mech_Launch_v2 = {'training':  ['Mech_Launch_v2_1', 'Mech_Launch_v2_2', 'Mech_Launch_v2_3', 'Mech_Launch_v2_4'], 'testing': 'Mech_Launch_v2_0', 'start_tool': 'PLACED'},

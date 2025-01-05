@@ -235,16 +235,16 @@ def save_image_seq(tnm):
     
 if __name__ == "__main__":
   json_dir = "./environment/Trials/Strategy/"
-  with open(json_dir + "CatapultAlt.json", 'r') as f:
-    btr = json.load(f)
-    tp = ToolPicker(btr)
-  path_dict, collisions, success, t = tp.runStatePath(
-        'obj2',
-        (270,540),
-        noisy=True
-  )
-  for c in collisions:
-    print(c[0:4])
+  # with open(json_dir + "CatapultAlt.json", 'r') as f:
+  #   btr = json.load(f)
+  #   tp = ToolPicker(btr)
+  # path_dict, collisions, success, t = tp.runStatePath(
+  #       'obj2',
+  #       (270,540),
+  #       noisy=True
+  # )
+  # for c in collisions:
+  #   print(c[0:4])
   # modify_level("CatapultAlt")
   # save_image_seq("Launch_v2")
   # random_sample("New_Catapult")

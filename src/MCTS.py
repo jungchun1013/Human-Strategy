@@ -4,8 +4,10 @@ import networkx as nx
 import json
 import hashlib
 import math
+import numpy as np
 
 class Node:
+    total_visits = 0
     def __init__(self, state, parent=None):
         self.state = state
         self.parent = parent
@@ -17,16 +19,16 @@ class Node:
     def is_fully_expanded(self):
         return len(self.children) == len(self.state.get_legal_actions())
 
-    def best_child(self, c_param=0.4):
+    def best_child(self, c_param=0.2):
 
         # UCB
         choices_weights = [
-            (child.value / child.visits) + c_param * math.sqrt((2 * math.log(child.visits) / child.visits))
+            (child.value / child.visits) + c_param * math.sqrt((2 * math.log(Node.total_visits) / child.visits))
             if child.visits > 0 else 0 for child in self.children
         ]
         if choices_weights:
             return self.children[choices_weights.index(max(choices_weights))]
-        return None
+
 
     def add_child(self, child_node):
         self.children.append(child_node)
@@ -36,11 +38,11 @@ class Node:
         self.visits += 1
         self.value += value
         
-    def estimate_value(self):
+    def estimate_value(self, c_param=0.2):
         if self.visits == 0:
             return 0
         # return self.value / self.visits
-        ucb_value = self.value / self.visits + np.sqrt(2 * np.log(np.sum(self.visits)) / self.visits)
+        ucb_value = self.value / self.visits + c_param * np.sqrt(np.log(Node.total_visits) / self.visits)
         return ucb_value
 
 class StrategyGraphState:
@@ -70,11 +72,13 @@ class StrategyGraphState:
         curr_obj_type = StrategyGraphState.mechanisms._check_object_type(curr_obj)
         if curr_obj_type == 'Tool':
             return []
+        
+        # print('curr_obj_type', StrategyGraphState.mechanisms.mechanisms)
         available_mech = StrategyGraphState.mechanisms.mechanisms[curr_obj_type]
         mech_choices = []
         for prev_mech in available_mech: 
             for obj in self.available_objects:
-                if StrategyGraphState.mechanisms._check_object_type(obj) == prev_mech.source_info['type'] and obj not in self.used_objects:  
+                if StrategyGraphState.mechanisms._check_object_type(obj) == prev_mech.source_info['type'] and obj not in self.used_objects and obj != curr_obj:  
                     mech_choices.append({'mech': prev_mech, 'src':obj, 'tar':curr_obj})
             if prev_mech.source_info['type'] == 'Tool':
                 mech_choices.append({'mech': prev_mech, 'src':'PLACED', 'tar':curr_obj})
@@ -118,6 +122,7 @@ class StrategyGraphMCTS:
         self.args = args
         # self.strategy_manager = strategy_manager
         self.root = None
+        self.visits = 0
 
     def sample(self):
         # root = Node(initial_state)
@@ -126,17 +131,17 @@ class StrategyGraphMCTS:
         used_obj = []
         strategy = []
         src_info = {'obj': 'Goal', 'type': 'Goal', 'ext': None, 'path': None}
+        # FIXME - never deliver model to MCTS
         curr_mech_pair = {'mech': Mechanism(src_info, None, None), 'src': 'Goal', 'tar': None}
         init_state = StrategyGraphState(None, available_obj, [], curr_mech_pair)
 
         if not self.root:
             self.root = Node(init_state)
-
         node = self._tree_policy(self.root)
         # reward = self._default_policy(node)
-        self._backup(node, 0)
+        # self._backup(node, None)
 
-        return self._best_action(self.root), node
+        return node.state.full_graph, node
 
     def search(self):
         available_obj = self.args.movable_objects
@@ -155,13 +160,32 @@ class StrategyGraphMCTS:
             self._backup(node, reward)
         
         self.print_graph(root)
+        self.print_simple_graph(root)
 
         return self._best_action(root), node
 
     def update_reward(self, node, reward):
         # get reward from simulation
         self._backup(node, reward)
+    def print_simple_graph(self, node=None, reward_only=False):
+        visited = set()
+        if not node:
+            node = self.root
 
+        # Define the DFS function
+        print('---- graph -----')
+        def dfs(node, depth=0):
+            indent = '  ' * depth  # Create an indent based on the current depth
+            if not reward_only or node.value > 0:
+                print(indent+str(node.state.curr_mech_pair['tar'])+'-'+str(node.state.curr_mech_pair['src']), Node.total_visits, node.visits, node.estimate_value(), ('t' if node.state.is_terminal() else''))  # Print the node
+            visited.add(node)  # Mark the node as visited
+            # Visit all the node's children
+            for child in node.children:
+                if child not in visited:
+                    dfs(child, depth=depth + 1)
+        # Start the DFS at the root node
+        dfs(node)
+        print('----------------')
     def print_graph(self, node=None, reward_only=False):
         # Create a set to store visited nodes
         visited = set()
@@ -173,7 +197,7 @@ class StrategyGraphMCTS:
         def dfs(node, depth=0):
             indent = '  ' * depth  # Create an indent based on the current depth
             if not reward_only or node.value > 0:
-                print(indent+str(node.state.curr_mech_pair['tar'])+'-'+str(node.state.curr_mech_pair['src'])+' '+str(node.state.curr_mech_pair['mech']), str(node.state.graph.edges()), node.estimate_value(), ('t' if node.state.is_terminal() else''))  # Print the node
+                print(indent+str(node.state.curr_mech_pair['tar'])+'-'+str(node.state.curr_mech_pair['src'])+' '+str(node.state.curr_mech_pair['mech']), str(node.state.graph.edges()), Node.total_visits, node.visits, node.estimate_value(), ('t' if node.state.is_terminal() else''))  # Print the node
             visited.add(node)  # Mark the node as visited
             # Visit all the node's children
             for child in node.children:
@@ -200,11 +224,18 @@ class StrategyGraphMCTS:
 
     def _tree_policy(self, node):
         while not node.state.is_terminal():
+            # print(node.state.get_legal_actions())
+
             if not node.is_fully_expanded():
                 # return self._expand(node)
                 node = self._expand(node)
             else:
+                # FIXME - return none
                 node = node.best_child()
+                
+        Node.total_visits += 1
+            
+                    
         return node
 
     def _default_policy(self, node):
@@ -221,7 +252,9 @@ class StrategyGraphMCTS:
         state = node.state
         state.full_graph = state.graph
         while node is not None:
-            node.update(reward)
+            print(node.state.curr_mech_pair['src'], node.state.curr_mech_pair['tar'])
+            if reward is not None:
+                node.update(reward)
             if node.parent:
                 best_child = node.parent.best_child()
                 if node.value/node.visits >= best_child.value/best_child.visits:
@@ -231,3 +264,6 @@ class StrategyGraphMCTS:
     def _best_action(self, root):
         # return root.state.full_graph
         return root.best_child().state.full_graph
+
+    def _best_node(self, root):
+        return root.best_child()

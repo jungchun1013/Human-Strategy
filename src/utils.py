@@ -213,9 +213,7 @@ def draw_samples(tp, samples, task, img_name):
     for col, sample in zip(colors, samples):
         for s in sample:
             x, y = s[0], 600-s[1]
-            vx, vy = s[3]/5, s[4]/5
             pg.draw.circle(sc, col, [x, y], 5)
-            pg.draw.line(sc, col, [x, y], [x+vx, y-vy], 2)
         img = sc.convert_alpha()
         pg.image.save(img, img_name)
 

@@ -14,32 +14,53 @@ from gplearn.genetic import SymbolicRegressor
 from pyGameWorld.helpers import centroidForPoly
 import json
 
+def check_object_type(obj_name):
+    if 'obj' in obj_name or 'PLACED' in obj_name:
+        return 'Tool'
+    elif 'Ball' in obj_name:
+        return 'Ball'
+    elif 'Goal' in obj_name:
+        return 'Goal'
+    elif 'Catapult' in obj_name or 'Lever' in obj_name or 'Plate' in obj_name or 'Support' in obj_name:
+        return 'Stick'
+    else:
+        return 'Block'
+
 class StrategyManager():
     def __init__(self, args):
         self.mechanism_set = MechanismSet(args)
         # self.strategy_graph_set = StrategyGraphSet()
         self.strategy_graphs = {}
         self.path_data = {}
+        self.schema = {}
+        self.forward_schema = {}
         # self.placement_graphs = []
         self.obj_count = Counter()
+        
     def __str__(self):
         _str = '========== strategy_graphs ==========\n'
+        _str += 'Nodes: [\'ext\', \'path\', \'GM\']\n'
+        _str += 'Edges: [\'label\', \'mech\', \'model\']\n'
         for task_series in self.strategy_graphs:
             for strat_type in self.strategy_graphs[task_series]:
-                _str += f'{task_series} - {strat_type}\n'
+                _str += f'{task_series} - '
                 graph = self.strategy_graphs[task_series][strat_type]
-                _str += 'Nodes: [\'ext\', \'path\', \'GM\']\n'
-                for node, data in graph.nodes(data=True):
-                    _str += f' {node} '
-                _str += 'Edges: [\'label\', \'mech\', \'model\']\n'
                 for u, v, data in graph.edges(data=True):
-                    _str += f' ({u}, {v}) '
-        _str += '========= mechanism_set ===========\n'
+                    _str += f' ({u}, {v}) {"O" if data["mech"].model else "X"}'
+                _str += '\n'
+        _str += '\n========= mechanism_set ===========\n'
         for obj_type in self.mechanism_set:
             _str += f'{obj_type}\n'
             for mech in self.mechanism_set.mechanisms[obj_type]:
                 _str += f'  {mech}\n'
-        _str += '===================================\n'
+        _str += '========== path_data =============\n'
+        for task_series in self.path_data:
+            for strat_type in self.path_data[task_series]:
+                _str += f'{task_series} - '
+                for u, v, data in graph.edges(data=True):
+                    _str += f' ({u}, {v}) '
+                _str += f'{len(self.path_data[task_series][strat_type])}\n'
+        _str += '==================================\n'
 
         return _str
 
@@ -48,21 +69,22 @@ class StrategyManager():
 
     def path2strategy(self, args, graph, start_tool='PLACED'):
         '''
-        extract strategy_graph
+        extract strategy_graph at the end of build graph
         '''
         s_graph = deepcopy(graph)
         for node in s_graph.nodes(): # reset for update
             s_graph.nodes[node]['ext'] = []
             s_graph.nodes[node]['path'] = []
         
-        # take path graph
         path = nx.shortest_path(s_graph, start_tool, 'Goal')
-        # path_graph = nx.Graph(s_graph.subgraph(path))
         path_graph = nx.DiGraph(s_graph.subgraph(path))
         
         return path_graph
         
     def merge_path_info(self, args):
+        """
+        Merge strategy path info after collect a bunch of data in build_strategy_graph
+        """
         # FIXME add strategy immediately after path is found
         for task_series in self.strategy_graphs:
             for strat_type in self.strategy_graphs[task_series]:
@@ -75,11 +97,9 @@ class StrategyManager():
                     src_info = {'obj': cur_node, 'type': self._check_object_type(cur_node), 'ext': graph.nodes[cur_node]['ext'], 'path': graph.nodes[cur_node]['path']}
                     tar_info = {'obj': succ_node, 'type': self._check_object_type(succ_node), 'ext': graph.nodes[succ_node]['ext'], 'path': graph.nodes[succ_node]['path']}
                     
-                    mech = Mechanism(src_info, tar_info)
+                    mech = Mechanism(src_info, tar_info, tnm=task_series)
                     graph.edges[(cur_node, succ_node)]['mech'] = mech
-                    self.mechanism_set.mechanisms.setdefault(self._check_object_type(succ_node), [])
-                    if str(mech) not in [str(m) for m in self.mechanism_set.mechanisms[self._check_object_type(succ_node)]]:
-                        self.mechanism_set.mechanisms[self._check_object_type(succ_node)].append(mech)
+                    # FIXME - mech model is not set
 
     def add_strategy(self, graph, path):
         for node in path.nodes():
@@ -92,16 +112,7 @@ class StrategyManager():
         return graph
     
     def _check_object_type(self, obj_name):
-        if 'obj' in obj_name or 'PLACED' in obj_name:
-            return 'Tool'
-        elif 'Ball' in obj_name:
-            return 'Ball'
-        elif 'Goal' in obj_name:
-            return 'Goal'
-        elif 'Catapult' in obj_name or 'Lever' in obj_name or 'Plate' in obj_name or 'Support' in obj_name:
-            return 'Stick'
-        else:
-            return 'Block'
+        return check_object_type(obj_name)
 
     def _extract_ext_info(self, args, col, path_dict, nodes, graph, list_info, ext_info, prev_col_idx):
         cur_node, succ_node = nodes
@@ -161,13 +172,15 @@ class StrategyManager():
         return is_valid_collision and not has_path
 
     def build_path(self, args, task_series, sample_obj, init_pose, path_info):
+        """
+        Building strategy path when collecting each success path
+        """
         path_dict, collisions, success = path_info
         succ_list = [sample_obj]
         node_list = [sample_obj]
         graph = nx.DiGraph()
         self.obj_count[sample_obj] += 1
         # add visited flag to collisions
-        is_col_visited = [False for _ in collisions]
         is_col_visited_CF = [False for _ in args.collisions0]
         ext_info = {
             'prev': {'src': init_pose, 'tgt': None},
@@ -197,39 +210,14 @@ class StrategyManager():
                 graph.nodes[cur_node]['tools'] = [cur_nd_name]
 
             prev_col_idx = 0
-            # NOTE - find collision without tool but not occurred when tool is placed
-            # FIXED - consider all CF collision given curr_node
-            col_CF_targets = []
-            CF_nodes = []
-            # print('args.collisions0')
-            for idx, col in enumerate(args.collisions0):
-                # print(col[0], col[1], col[2], col[3])
-                if col[2] > time_pass  and not is_col_visited_CF[idx]:
-                    if col[0] == cur_node and col[1] in available_objects:
-                        tar = col[1]
-                    elif col[1] == cur_node and col[0] in available_objects:
-                        tar = col[0]
-                    else:
-                        continue
-                    is_col_visited_CF[idx] = True
-                    CF_nodes.append(tar)
-                    # if tar not in col_CF_target:
-                    col_CF_targets.append(col)
-                    break
             # NOTE - find collision related to current strategy graph
             # print('collisions')
             for idx, col in enumerate(collisions):
-                # print(col[0], col[1], col[2], col[3])
-                
                 if col[0] == cur_node or col[1] == cur_node:
-                    is_col_visited[idx] = True
                     succ_node = col[1] if col[0] == cur_node else col[0]
                 else:
                     # The collision does not relate to the current node
                     continue
-                # FIXME - catapult tmp setting
-                # if cur_node == 'CataBall' and succ_node == 'Lever':
-                #     continue
                 if succ_node in available_objects:
                     if self._is_valid_collision_and_not_has_path(args, cur_node, succ_node, graph):
                         nodes = cur_node, succ_node
@@ -239,15 +227,32 @@ class StrategyManager():
                 else:
                     ext_col_list.append(succ_node)
 
-            # NOTE - counterfactual
-            if not succ_list and col_CF_targets:
-                # col_CF_target: if CF, col_CF_target != none
-                for CF_node, col_CF_target in zip(CF_nodes, col_CF_targets):
-                    if self._is_valid_collision_and_not_has_path(args, cur_node, CF_node, graph):
-                        nodes = cur_node, CF_node
-                        list_info = succ_list, ext_col_list, node_list
-                    list_info, ext_info, prev_col_idx, time_pass = self._extract_ext_info(args, col_CF_target, path_dict, nodes, graph, list_info, ext_info, prev_col_idx)
+            # NOTE - find collision without tool but not occurred when tool is placed
+            # FIXED - consider all CF collision given curr_node
+            col_CF_target = None
+            CF_node = None
+            # print('args.collisions0')
+            for idx, col in enumerate(args.collisions0):
+                # print(col[0], col[1], col[2], col[3])
+                if col[2] > time_pass  and not is_col_visited_CF[idx]:
+                    if col[0] == cur_node and col[1] in available_objects:
+                        CF_node = col[1]
+                    elif col[1] == cur_node and col[0] in available_objects:
+                        CF_node = col[0]
+                    else:
+                        continue
+                    is_col_visited_CF[idx] = True
+                    col_CF_target = col
                     break
+                else:
+                    continue
+            # NOTE - counterfactual
+            if not succ_list and col_CF_target:
+                if self._is_valid_collision_and_not_has_path(args, cur_node, CF_node, graph):
+                    nodes = cur_node, CF_node
+                    list_info = succ_list, ext_col_list, node_list
+                list_info, ext_info, prev_col_idx, time_pass = self._extract_ext_info(args, col_CF_target, path_dict, nodes, graph, list_info, ext_info, prev_col_idx)
+                break
         print('-', graph.edges(), path_info[2])
         # NOTE - find goal -> record path
         if 'Goal' in graph.nodes():
@@ -267,8 +272,8 @@ class StrategyManager():
         else:
             return None
 
-    def train(self, args):
-        print('Training')
+    def build_mechanisms(self, args):
+        print('Running Gaussian Process Regression')
         for task_series in self.strategy_graphs:
             for strat_type in self.strategy_graphs[task_series]:
                 graph = self.strategy_graphs[task_series][strat_type]
@@ -280,7 +285,6 @@ class StrategyManager():
                     img_name = os.path.join(args.trial_dir_name,
                         'train_GM_sample_'+task_series+nd+'.png'
                     )
-                    draw_samples(args.tp0, [data], 'single', img_name)
                     gmm = mixture.GaussianMixture(
                         n_components=1, 
                         covariance_type='full'
@@ -290,7 +294,8 @@ class StrategyManager():
                 for nd_i, nd_j in graph.edges():
                     if nd_j not in args.tp0.toolNames: # the node that exclude tool object
                         data = graph.nodes[nd_j]['ext']
-                        tool_data, target_data = zip(*[[d[0], d[3]+d[1]+list(d[4][0:2])+list(d[5][0:2])] for d in data if d[0] is not None])
+                        tool_data, target_data = zip(*[[d[0][0:2], list(d[3][0:2])+list(d[4][0:2])+list(d[5][0:2])] for d in data if d[0] is not None])
+                        # 0 source prev 1 target prev 2 source curr 3 target curr 4 source init 5 target init
 
                         img_name = os.path.join(args.trial_dir_name,
                             'train_GP_sample_'+task_series+nd_i+nd_j+'.png'
@@ -310,21 +315,171 @@ class StrategyManager():
                             y[i][0] -= x[i][0] # prev_tool - cur_target
                             y[i][1] -= x[i][1]
                             # if any(pred in args.tp0.toolNames for pred in graph.predecessors(nd)):
+                            # x[i] = x[i][2:]
                             if nd_i == 'PLACED':
                                 # x[i][12:] target init pos
-                                x[i] = x[i][2:5]+x[i][12:]
-                            else:
-                                x[i] = x[i][2:]
+                                x[i] = x[i][:2] + x[i][-2:]
+                                # x[i] = x[i][-2:]
+                            # else:
+                            #     x[i] = x[i][2:]
+                            y[i] = y[i][:2]
+                            
                         if len(x) < 2:
                             continue
                         # print('GPR', len(x), len(x[0]), end=' ')
-                        kernel = DotProduct() + WhiteKernel()
-                        gpr = GaussianProcessRegressor(kernel=kernel, random_state=None).fit(x, y)
+                        try:
+                            kernel = DotProduct() + WhiteKernel()
+                            gpr = GaussianProcessRegressor(kernel=kernel, random_state=None).fit(x, y)
+                        except Exception as e:
+                            gpr = None
+                            logging.warning(f'GPR fitting failed for edge ({nd_i}, {nd_j}): {e}')
                         graph.edges[(nd_i, nd_j)]['model'] = gpr
                         graph.edges[(nd_i, nd_j)]['mech'].model = gpr
+                        # NOTE - set model for mechanism set
+        self.update_mechanisms()
+          
+    def build_schema(self, args):
+        
+        
+        # TODO - How to identify the schema?
+        self.schema = {}
+        print('Running Gaussian Process Regression')
+        for task_series in self.strategy_graphs:
+            for strat_type in self.strategy_graphs[task_series]:
+                graph = self.strategy_graphs[task_series][strat_type]
+                obj_types = []
+                nd = "PLACED"
+                while nd != "Goal":
+                    nd = next(d for d in graph.successors(nd))
+                    obj_types.append(check_object_type(nd))
+                print(obj_types)
 
+                # NOTE - train schema for each strategy graph
+                # u = next(nd for nd in graph.successors("PLACED"))
+                u = "PLACED"
+                v = "Goal"
+                if u and v:
+                    print(f"First node: {u}, Last node: {v}")
+                    
+                start_data = graph.nodes[u]['ext']
+                goal_data = graph.nodes[v]['ext']
+                
+                # TODO - add all object position
+                obj_pos_list = []
+
+                X = []
+                for i in range(len(goal_data)):
+                    obj_pos_list = []
+                    nd = "PLACED"
+                    while nd != "Goal":
+                        nd = next(d for d in graph.successors(nd))
+                        pos = graph.nodes[nd]['ext'][i][5][0:2] if nd!='goal' else centroidForPoly(args.btr0['world']['objects']['Goal']['points'])
+                        obj_pos_list.extend(list(pos))
+                    X.append(obj_pos_list)
+                # X = [obj_pos_list for datum in goal_data] # target curr e.g. goal
+                Y = [datum[5][0:2] for datum in start_data] # source curr e.g. tool after drop
+                
+                # 0 source prev /1 target prev /2 source curr /3 target curr /4 source init /5 target init
+                # PLACED: 3,5
+                x = deepcopy(list(X))
+                y = deepcopy(list(Y))
+
+                for i in range(len(y)):
+                    # y[i][0] -= x[i][0] # relative position
+                    # y[i][1] -= x[i][1]
+                    y[i][0] -= x[i][-2] # relative position: goal
+                    y[i][1] -= x[i][-1]
+                    # TODO - only use relative position
+                    # x[i] = x[i][2:]
+                    # y[i] = y[i][:2]
+
+                for d in list(zip(x, y)):
+                    print(d)
+                if len(x) < 2:
+                    continue
+                # print('GPR', len(x), len(x[0]), end=' ')
+                try:
+                    kernel = DotProduct() + WhiteKernel()
+                    gpr = GaussianProcessRegressor(kernel=kernel, random_state=None).fit(x, y)
+                except Exception as e:
+                    gpr = None
+                    logging.warning(f'GPR fitting failed for edge ({nd_i}, {nd_j}): {e}')
+                self.schema.setdefault(task_series, {})[strat_type] = (gpr, graph, obj_types)
+
+    def build_forward_schema(self, args):        
+        self.forward_schema = {}
+        print('Running Gaussian Process Regression')
+        for task_series in self.strategy_graphs:
+            for strat_type in self.strategy_graphs[task_series]:
+                graph = self.strategy_graphs[task_series][strat_type]
+                # NOTE - train schema for each strategy graph
+                # u = next(nd for nd in graph.successors("PLACED"))
+                u = "PLACED"
+                v = "Goal"
+                if u and v:
+                    print(f"First node: {u}, Last node: {v}")
+                    
+                start_data = graph.nodes[u]['ext']
+                goal_data = graph.nodes[v]['ext']
+                
+                # TODO - add all object position
+                obj_pos_list = []
+
+                X = []
+                for i in range(len(goal_data)):
+                    obj_pos_list = []
+                    nd = "PLACED"
+                    while nd != "Goal":
+                        # NOTE - here does not include goal position
+                        pos = graph.nodes[nd]['ext'][i][5][0:2]
+                        obj_pos_list.extend(list(pos))
+                        nd = next(d for d in graph.successors(nd))
+                        
+                    X.append(obj_pos_list)
+                # X = [obj_pos_list for datum in goal_data] # target curr e.g. goal
+                Y = [list(datum[5][0:2]) for datum in goal_data] # source curr e.g. tool after drop
+
+                # 0 source prev /1 target prev /2 source curr /3 target curr /4 source init /5 target init
+                # PLACED: 3,5
+                x = deepcopy(list(X))
+                y = deepcopy(list(Y))
+
+                for i in range(len(y)):
+                    # y[i][0] -= x[i][0] # relative position
+                    # y[i][1] -= x[i][1]
+                    y[i][0] -= x[i][0] # relative position: goal
+                    y[i][1] -= x[i][1]
+                    # TODO - only use relative position
+                    # x[i] = x[i][2:]
+                    # y[i] = y[i][:2]
+
+                if len(x) < 2:
+                    continue
+                # print('GPR', len(x), len(x[0]), end=' ')
+                try:
+                    kernel = DotProduct() + WhiteKernel()
+                    gpr = GaussianProcessRegressor(kernel=kernel, random_state=None).fit(x, y)
+                except Exception as e:
+                    gpr = None
+                    logging.warning(f'GPR fitting failed for edge ({nd_i}, {nd_j}): {e}')
+                self.forward_schema.setdefault(task_series, {})[strat_type] = (gpr, graph, [])
+
+                    
+    def update_mechanisms(self):
+        # FIXME - should remove other set mechanism method
+        self.mechanism_set = MechanismSet()
+        for task_series in self.strategy_graphs:
+            for strat_type in self.strategy_graphs[task_series]:
+                graph = self.strategy_graphs[task_series][strat_type]
+                for u, v, data in graph.edges(data=True):
+                    mech = data['mech']
+                    self.mechanism_set.mechanisms.setdefault(self._check_object_type(v), [])
+                    if str(mech) not in [str(m) for m in self.mechanism_set.mechanisms[self._check_object_type(v)]]:
+                        self.mechanism_set.mechanisms[self._check_object_type(v)].append(mech)
+                    
 class Mechanism():
-    def __init__(self, source_info, target_info, model=None):
+    def __init__(self, source_info, target_info, model=None, tnm=None):
+        self.tnm = tnm if tnm else '-'
         if source_info:
             self.source_info = source_info
         else:
@@ -337,7 +492,7 @@ class Mechanism():
     
     def __str__(self):
         # return f'{self.source_info["obj"]}({self.source_info["type"]}) <- {self.target_info["obj"]}({self.target_info["type"]}) {hex(id(self))}'
-        return f'{self.source_info["obj"]}({self.source_info["type"]}) <- {self.target_info["obj"]}({self.target_info["type"]})'
+        return f'[{self.tnm}] {self.source_info["obj"]}({self.source_info["type"]}) <- {self.target_info["obj"]}({self.target_info["type"]})'
     def __repr__(self):
         return self.__str__()
     
@@ -354,7 +509,7 @@ class MechanismSet():
     Each mechanism is unique (task, graph, soure, target)
     
     '''
-    def __init__(self, args, strat_graph=None):
+    def __init__(self, args=None, strat_graph=None):
         # search by mechanism target for source (backward chaining)
         self.mechanisms = {}
         # if strat_graph:
@@ -363,21 +518,9 @@ class MechanismSet():
     def __iter__(self):
         # This method makes the class iterable
         return iter(self.mechanisms)
-    
-
-    
 
     def _check_object_type(self, obj_name):
-        if 'obj' in obj_name or 'PLACED' in obj_name:
-            return 'Tool'
-        elif 'Ball' in obj_name:
-            return 'Ball'
-        elif 'Goal' in obj_name:
-            return 'Goal'
-        elif 'Catapult' in obj_name or 'Lever' in obj_name or 'Plate' in obj_name or 'Support' in obj_name:
-            return 'Stick'
-        else:
-            return 'Block'
+        return check_object_type(obj_name)
 
 
 def get_obj_type(obj_name):
@@ -408,9 +551,9 @@ def merge_mechanisms(args, strategy_graphs):
                     'tool_path': graph.nodes[u]['path'],
                     'target_path': graph.nodes[v]['path'],
                 }
-                if u == 'Place':
+                if u == 'PLACED':
                     mechanism['tools'] = graph.nodes[u]['tools']
-
+                    
                 if (u_type, v_type) not in mechanism_list:
                     mechanism_list[(u_type, v_type)] = mechanism
                 else:
@@ -437,26 +580,3 @@ def train_mechanism(args, mechanism_list):
         gpr = GaussianProcessRegressor(kernel=kernel).fit(x, y)
         mechanism_list[mech]['model'] = gpr
     return mechanism_list
-
-def build_graph_from_mechanism_seq(mechanism_list, task_series, start_tool):
-    strategy_graph = StrategyGraph(task_series, start_tool)
-    graph = nx.DiGraph()
-    for mech_info in mechanism_list:
-        mech, src_obj, tar_obj = mech_info['mech'], mech_info['src'], mech_info['tar']
-        if not graph.has_node(src_obj):
-            graph.add_node(
-                src_obj,
-                ext=mech.source_info['ext'],
-                path=mech.source_info['path']
-            )
-        if not graph.has_node(tar_obj):
-            graph.add_node(
-                tar_obj,
-                ext=mech.target_info['ext'],
-                path=mech.target_info['path']
-            )
-        if not graph.has_edge(src_obj, tar_obj):
-            graph.add_edge(src_obj, tar_obj, model=mech.model)
-    
-    strategy_graph.placement_graphs.append(graph)
-    return strategy_graph

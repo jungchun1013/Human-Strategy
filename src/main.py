@@ -1135,12 +1135,6 @@ if __name__ == "__main__":
             if args.SSUP:
                 tnm = args.tnm
                 setup_task_args(args, tnm)
-                
-                # print(strategy_graph)
-                # mechanisms = MechanismSet(args, strategy_graph)
-                # mechanism_seq = mechanisms.sample_strategy(args)
-                # start_tool = config.task_config[args.tsnm]['start_tool']
-                # build_graph_from_mechanism_seq(mechanism_seq, args.task2series[args.tnm], start_tool)
                 strategy_MCTS = StrategyGraphMCTS(10, args, strategy_graph)
                 StrategyGraphState.set_mechanisms(strategy_graph.mechanism_set)
                 for i in range(1200):

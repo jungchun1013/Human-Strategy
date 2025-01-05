@@ -1,10 +1,10 @@
 
 {"world":{"dims":[600,600],"bts":0.01,"gravity":200,"defaults":{"density":1,"friction":0.5,"elasticity":0.5,"color":"black","bk_color":"white"},"objects":{"_LeftWall":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[-1,-1],[-1,601],[1,601],[1,-1]]},"_BottomWall":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[-1,-1],[-1,1],[601,1],[601,-1]]},"_RightWall":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[599,-1],[599,601],[601,601],[601,-1]]},"_TopWall":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[-1,599],[-1,601],[601,601],[601,599]]},
     "slope": {"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[446,255],[600,295],[600,255]]},
-    "Table":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[250,0],[250,232],[260,232],[260,0]]},
-    "Table2":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[398,0],[398,255],[600,255],[600,0]]},
-    "Plate":{"type":"Poly","color":"blue","density":1,"friction":0.5,"elasticity":0.5,"vertices":[[277,255],[277,269],[376,269],[376,255]]},
-    "floor":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[260,0],[260,152],[398,152],[398,0]]},
-    "Goal":{"type":"Container","color":"black","density":0,"friction":0.5,"elasticity":0.5,"points":[[160,230],[160,55],[246,55],[246,230]],"width":10,"innerColor":"green","outerColor":"black"},
+    "Table":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[150,100],[150,232],[260,232],[260,100]]},
+    "Table2":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[398,100],[398,255],[600,255],[600,100]]},
+    "Plate":{"type":"Poly","color":"blue","density":1,"friction":0.5,"elasticity":0.5,"vertices":[[277,265],[277,279],[376,279],[376,265]]},
+    "floor":{"type":"Poly","color":"black","density":0,"friction":0.5,"elasticity":0.5,"vertices":[[277,145],[277,162],[376,162],[376,145]]},
+    "Goal":{"type":"Container","color":"black","density":0,"friction":0.5,"elasticity":0.5,"points":[[50,230],[50,155],[146,155],[146,230]],"width":10,"innerColor":"green","outerColor":"black"},
     "Ball":{"type":"Ball","color":"red","density":1,"friction":0.5,"elasticity":0.5,"velocity":[0,0],"position":[512,305],"radius":10}
-    },"blocks":{},"constraints":{},"gcond":{"type":"ManyInGoal","objlist":["Ball","Ball2"],"goal":"Goal","duration":2}},"tools":{"obj1":[[[-5,-35],[-40,35],[40,35],[5,-35]]],"obj2":[[[-40,-35],[-5,35],[5,35],[40,-35]]],"obj3":[[[-3.5,-28],[-3.5,28],[3.5,28],[3.5,-28]]]},"toolNames":["obj1","obj2","obj3"],"sucText":"Get a red ball into the green goal"}
+    },"blocks":{},"constraints":{},"gcond":{"type":"ManyInGoal","objlist":["Ball","Ball2"],"goal":"Goal","duration":2}},"tools":{"obj1":[[[-15,-35],[-15,35],[15,35],[15,-35]]],"obj2":[[[-30, 20], [30, 20], [0, -20]]],"obj3":[[[-40,0],[0,40],[40,0],[0,-40]]]},"toolNames":["obj1","obj2","obj3"],"sucText":"Get a red ball into the green goal"}
